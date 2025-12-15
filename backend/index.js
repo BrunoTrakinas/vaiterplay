@@ -8308,34 +8308,32 @@ você receberá uma mensagem automática de confirmação aqui no WhatsApp.`;
 
 async function enviarResumoAgendamentos(waId, cpfBruto) {
   try {
-    const cpf = normalizarCpf(cpfBruto);
-    if (!cpf) {
+    // CPF para consulta: SOMENTE números
+    const cpf = String(cpfBruto || "").replace(/\D/g, "");
+
+    if (cpf.length !== 11) {
       await callWhatsAppAPI(
-        buildTextMessage(waId, "CPF inválido. Tente novamente.")
+        buildTextMessage(waId, "CPF inválido. Digite os *11 números* (sem pontos e traço).")
       );
       return;
     }
 
-    // Janela: últimos 60 dias + próximos 60 dias
-const hoje = new Date();
-hoje.setHours(0, 0, 0, 0);
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
 
-const inicio = new Date(hoje);
-inicio.setDate(inicio.getDate() - 60);
+    const daqui60 = new Date(hoje);
+    daqui60.setDate(daqui60.getDate() + 60);
 
-const fim = new Date(hoje);
-fim.setDate(fim.getDate() + 60);
+    // Formato YYYY-MM-DD em horário local (evita pegadinha do toISOString/UTC)
+    const formatISODate = (d) => {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, "0");
+      const day = String(d.getDate()).padStart(2, "0");
+      return `${y}-${m}-${day}`;
+    };
 
-// Formata YYYY-MM-DD em horário local (evita bug de UTC do toISOString)
-const formatISODate = (d) => {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-};
-
-const inicioStr = formatISODate(inicio);
-const fimStr = formatISODate(fim);
+    const hojeStr = formatISODate(hoje);
+    const daqui60Str = formatISODate(daqui60);
 
 console.log("[MEUS AG] cpfBruto =", cpfBruto);
 console.log("[MEUS AG] cpf normalizado =", cpf);
