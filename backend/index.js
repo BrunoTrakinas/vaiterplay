@@ -8318,22 +8318,26 @@ async function enviarResumoAgendamentos(waId, cpfBruto) {
       return;
     }
 
-    const hoje = new Date();
-    hoje.setHours(0, 0, 0, 0);
+   const hoje = new Date();
+hoje.setHours(0,0,0,0);
 
-    const daqui60 = new Date(hoje);
-    daqui60.setDate(daqui60.getDate() + 60);
+const inicio = new Date(hoje);
+inicio.setDate(inicio.getDate() - 60);
 
-    // Formato YYYY-MM-DD em horário local (evita pegadinha do toISOString/UTC)
-    const formatISODate = (d) => {
-      const y = d.getFullYear();
-      const m = String(d.getMonth() + 1).padStart(2, "0");
-      const day = String(d.getDate()).padStart(2, "0");
-      return `${y}-${m}-${day}`;
-    };
+const fim = new Date(hoje);
+fim.setDate(fim.getDate() + 60);
 
-    const hojeStr = formatISODate(hoje);
-    const daqui60Str = formatISODate(daqui60);
+const formatISODate = (d) => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+};
+
+const inicioStr = formatISODate(inicio);
+const fimStr = formatISODate(fim);
+
+
 
 console.log("[MEUS AG] cpfBruto =", cpfBruto);
 console.log("[MEUS AG] cpf normalizado =", cpf);
@@ -8348,6 +8352,7 @@ console.log("[MEUS AG] daqui60Str =", daqui60Str);
       .gte("data", inicioStr)
       .lte("data", fimStr)
       .order("data", { ascending: true });
+
 
     if (error) {
       throw error;
