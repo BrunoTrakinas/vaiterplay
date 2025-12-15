@@ -8316,19 +8316,39 @@ async function enviarResumoAgendamentos(waId, cpfBruto) {
       return;
     }
 
-    const hoje = new Date();
-    const daqui60 = new Date();
-    daqui60.setDate(daqui60.getDate() + 60);
+    // Janela: últimos 60 dias + próximos 60 dias
+const hoje = new Date();
+hoje.setHours(0, 0, 0, 0);
 
-    const hojeStr = hoje.toISOString().slice(0, 10);
-    const daqui60Str = daqui60.toISOString().slice(0, 10);
+const inicio = new Date(hoje);
+inicio.setDate(inicio.getDate() - 60);
+
+const fim = new Date(hoje);
+fim.setDate(fim.getDate() + 60);
+
+// Formata YYYY-MM-DD em horário local (evita bug de UTC do toISOString)
+const formatISODate = (d) => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+};
+
+const inicioStr = formatISODate(inicio);
+const fimStr = formatISODate(fim);
+
+console.log("[MEUS AG] cpfBruto =", cpfBruto);
+console.log("[MEUS AG] cpf normalizado =", cpf);
+
+console.log("[MEUS AG] hojeStr =", hojeStr);
+console.log("[MEUS AG] daqui60Str =", daqui60Str);
 
     const { data, error } = await supabase
       .from("reservas")
       .select("id, data, hora, status, quadras ( id, tipo, material, modalidade )")
       .eq("user_cpf", cpf)
-      .gte("data", hojeStr)
-      .lte("data", daqui60Str)
+      .gte("data", inicioStr)
+      .lte("data", fimStr)
       .order("data", { ascending: true });
 
     if (error) {
@@ -9954,10 +9974,7 @@ if (msgType === "text") {
     return res.sendStatus(200);
   }
 
-  // ...continua seu código normal daqui pra baixo...
-
-
-  // Gatilhos de saudação / menu / agendamento
+    // Gatilhos de saudação / menu / agendamento
   const gatilhosSaudacao = [
     "oi",
     "ola",
