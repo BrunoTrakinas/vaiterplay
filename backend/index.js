@@ -8311,27 +8311,26 @@ async function enviarResumoAgendamentos(waId, cpfBruto) {
     // 1. Tratamento do CPF (Deixa apenas números)
     const cpf = String(cpfBruto || "").replace(/\D/g, "");
 
-    // Validação básica de tamanho
     if (cpf.length !== 11) {
       await callWhatsAppAPI(
-        buildTextMessage(waId, "CPF inválido. Digite os *11 números* (sem pontos e traço).")
+        buildTextMessage(
+          waId,
+          "CPF inválido. Digite os *11 números* (sem pontos e traço)."
+        )
       );
       return;
     }
 
     // 2. Definição das Datas (Hoje, -60 dias e +60 dias)
     const hoje = new Date();
-    hoje.setHours(0, 0, 0, 0); // Zera o horário para evitar problemas de fuso
+    hoje.setHours(0, 0, 0, 0);
 
-    // Data de Início (-60 dias)
     const inicio = new Date(hoje);
     inicio.setDate(inicio.getDate() - 60);
 
-    // Data Final (+60 dias)
     const fim = new Date(hoje);
     fim.setDate(fim.getDate() + 60);
 
-    // Função interna para formatar YYYY-MM-DD
     const formatISODate = (d) => {
       const y = d.getFullYear();
       const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -8341,27 +8340,19 @@ async function enviarResumoAgendamentos(waId, cpfBruto) {
 
     const inicioStr = formatISODate(inicio);
     const fimStr = formatISODate(fim);
-    const hojeStr = formatISODate(hoje); // Criei esta variável para o log funcionar se precisar
 
-    // 3. Logs de Debug (AGORA CORRIGIDOS)
-    console.log("[MEUS AG] cpfBruto =", cpfBruto);
-    console.log("[MEUS AG] cpf normalizado =", cpf);
-    console.log("[MEUS AG] Buscando entre:", inicioStr, "e", fimStr);
-
-    // 4. Consulta ao Supabase
+    // 3. Consulta ao Supabase
     const { data, error } = await supabase
       .from("reservas")
       .select("id, data, hora, status, quadras ( id, tipo, material, modalidade )")
       .eq("user_cpf", cpf)
-      .gte("data", inicioStr) // Maior ou igual a 60 dias atrás
-      .lte("data", fimStr)    // Menor ou igual a 60 dias na frente
-      .order("data", { ascending: true }); // Ordena do mais antigo para o mais novo
+      .gte("data", inicioStr)
+      .lte("data", fimStr)
+      .order("data", { ascending: true });
 
-    if (error) {
-      throw error;
-    }
+    if (error) throw error;
 
-    // 5. Verificação se encontrou algo
+    // 4. Verificação se encontrou algo
     if (!data || data.length === 0) {
       await callWhatsAppAPI(
         buildTextMessage(
@@ -8372,32 +8363,81 @@ async function enviarResumoAgendamentos(waId, cpfBruto) {
       return;
     }
 
-    // 6. Montagem da Mensagem de Resposta
+    // 5. Montagem da Mensagem de Resposta
     let mensagem = "📆 *Seus agendamentos (período de 120 dias)*\n\n";
 
     data.forEach((r) => {
-      // Garante que não quebre se a quadra tiver sido deletada
-      const quadraNome = r.quadras ? buildNomeQuadraDinamico(r.quadras) : "Quadra não identificada";
-      
-      // Formata a data para BR (DD/MM/YYYY) para ficar bonito no zap
-      const dataFormatadaBR = r.data.split('-').reverse().join('/');
+      const quadraNome = r.quadras
+        ? buildNomeQuadraDinamico(r.quadras)
+        : "Quadra não identificada";
 
-      mensagem += `• ID: ${r.id}\n  Quadra: ${quadraNome}\n  Data: ${dataFormatadaBR} às ${r.hora}\n  Status: ${
-        r.status === "paid" ? "✅ Pago" : "⏳ Pendente"
-      }\n\n`;
+      const dataFormatadaBR = String(r.data || "")
+        .split("-")
+        .reverse()
+        .join("/");
+
+      // ✅ NOVO: descrição baseada na data/hora (passado vs futuro/hoje)
+      const descricao = getDescricaoReservaPorData(r.data, r.hora);
+
+      mensagem +=
+        `• ID: ${r.id}\n` +
+        `  Quadra: ${quadraNome}\n` +
+        `  Data: ${dataFormatadaBR} às ${r.hora}\n` +
+        `  Status: ${r.status === "paid" ? "✅ Pago" : "⏳ Pendente"}\n` +
+        `  ${descricao}\n\n`;
     });
 
     mensagem += 'Precisa cancelar? Responda "cancelar [ID reserva]".';
 
     await callWhatsAppAPI(buildTextMessage(waId, mensagem));
-
   } catch (err) {
     console.error("[FUNÇÃO] Erro em enviarResumoAgendamentos:", err);
     await callWhatsAppAPI(
-      buildTextMessage(waId, "Ocorreu um erro ao buscar seus agendamentos. Tente novamente mais tarde.")
+      buildTextMessage(
+        waId,
+        "Ocorreu um erro ao buscar seus agendamentos. Tente novamente mais tarde."
+      )
     );
   }
 }
+
+function parseDataHoraReservaToDate(dataISO, horaStr) {
+  if (!dataISO) return null;
+
+  const [y, m, d] = String(dataISO).split("-").map((x) => parseInt(x, 10));
+  if (!y || !m || !d) return null;
+
+  let hh = 0,
+    mm = 0,
+    ss = 0;
+
+  if (horaStr) {
+    const parts = String(horaStr).split(":");
+    hh = parseInt(parts[0] || "0", 10) || 0;
+    mm = parseInt(parts[1] || "0", 10) || 0;
+    ss = parseInt(parts[2] || "0", 10) || 0;
+  }
+
+  return new Date(y, m - 1, d, hh, mm, ss, 0);
+}
+
+function getDescricaoReservaPorData(dataISO, horaStr) {
+  const dtReserva = parseDataHoraReservaToDate(dataISO, horaStr);
+
+  // fallback seguro
+  if (!dtReserva) {
+    return "Imprevistos acontecem? Para cancelar ou reagendar, fale diretamente com o estabelecimento.";
+  }
+
+  const agora = new Date();
+  const isPassado = dtReserva.getTime() < agora.getTime();
+
+  return isPassado
+    ? "Agendamento finalizado. Para novas reservas, inicie uma nova conversa."
+    : "Imprevistos acontecem? Para cancelar ou reagendar, fale diretamente com o estabelecimento.";
+}
+
+
 
 // -----------------------------------------
 // Helper: monta o "nome" dinâmico da quadra
