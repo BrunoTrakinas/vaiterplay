@@ -9054,89 +9054,127 @@ app.post("/mp-webhook", async (req, res) => {
     }
 
     // 1) Busca o pagamento completo no MP para ver o status
-const payment = await mpPayment.get({ id: paymentId });
-const p = payment.response || payment;
+    const payment = await mpPayment.get({ id: paymentId });
+    const p = payment.response || payment;
 
-console.log("[MP WEBHOOK] Pagamento recuperado:", {
-  id: p.id,
-  status: p.status,
-  status_detail: p.status_detail
-});
+    console.log("[MP WEBHOOK] Pagamento recuperado:", {
+      id: p.id,
+      status: p.status,
+      status_detail: p.status_detail
+    });
 
-// Nos interessa apenas quando estiver realmente aprovado
-if (p.status !== "approved") {
-  console.log("[MP WEBHOOK] Pagamento ainda não aprovado. Status:", p.status);
-  return res.sendStatus(200);
-}
+    // Nos interessa apenas quando estiver realmente aprovado
+    if (p.status !== "approved") {
+      console.log("[MP WEBHOOK] Pagamento ainda não aprovado. Status:", p.status);
+      return res.sendStatus(200);
+    }
 
-// 2) Atualiza a reserva correspondente no Supabase para "paid"
-const { data: reservaAtualizada, error } = await supabase
-  .from("reservas")
-  .update({
-    status: "paid",
-    updated_at: new Date().toISOString()
-  })
-  .eq("id_transacao_pix", String(p.id))
-  .neq("status", "paid") // ✅ evita reprocessar (idempotência na reserva)
-  .select(
-    `
-    id,
-    phone,
-    data,
-    hora,
-    preco_total,
-    quadras (
-      id,
-      tipo,
-      material,
-      modalidade,
-      gestor_id,
-      empresa_id
-    )
-    `
-  )
-  .single();
+    // 2) Atualiza a reserva correspondente no Supabase para "paid"
+    const { data: reservaAtualizada, error } = await supabase
+      .from("reservas")
+      .update({
+        status: "paid",
+        updated_at: new Date().toISOString()
+      })
+      .eq("id_transacao_pix", String(p.id))
+      .neq("status", "paid") // ✅ evita reprocessar (idempotência na reserva)
+      .select(
+        `
+        id,
+        phone,
+        data,
+        hora,
+        preco_total,
+        quadras (
+          id,
+          tipo,
+          material,
+          modalidade,
+          gestor_id,
+          empresa_id,
+          taxa_plataforma_override
+        )
+        `
+      )
+      .single();
 
-if (error) {
-  console.error("[MP WEBHOOK] Erro ao atualizar reserva no Supabase:", error);
-  return res.sendStatus(200); // não dá erro pro MP, senão ele fica re-tentando sem parar
-}
+    if (error) {
+      console.error("[MP WEBHOOK] Erro ao atualizar reserva no Supabase:", error);
+      return res.sendStatus(200); // não dá erro pro MP, senão ele fica re-tentando sem parar
+    }
 
-if (!reservaAtualizada) {
-  console.log(
-    "[MP WEBHOOK] Reserva não atualizada (não encontrada OU já estava paid) para id_transacao_pix =",
-    String(p.id)
-  );
-  return res.sendStatus(200);
-}
+    if (!reservaAtualizada) {
+      console.log(
+        "[MP WEBHOOK] Reserva não atualizada (não encontrada OU já estava paid) para id_transacao_pix =",
+        String(p.id)
+      );
+      return res.sendStatus(200);
+    }
 
-// 2.1) Cria/atualiza registro financeiro em pagamentos (idempotente)
-
-
+    // 2.1) Cria/atualiza registro financeiro em pagamentos (idempotente)
     try {
       const round2 = (v) => Math.round((Number(v) + Number.EPSILON) * 100) / 100;
 
       const total = Number(reservaAtualizada.preco_total || 0);
 
-      // Busca taxa da empresa (percentual, ex: 20 = 20%)
+      // ============================================
+      // TAXA PLATAFORMA (%): prioridade por override
+      // 1) quadra.taxa_plataforma_override
+      // 2) gestor.taxa_plataforma_global
+      // 3) empresa.taxa_plataforma
+      // ============================================
       let taxaPercent = 0;
-      const empresaId = reservaAtualizada.quadras?.empresa_id || null;
 
-      if (empresaId) {
-        const { data: emp, error: empErr } = await supabase
-          .from("empresas")
-          .select("taxa_plataforma")
-          .eq("id", empresaId)
-          .single();
+      const quadra = reservaAtualizada.quadras || null;
+      const quadraOverride = quadra?.taxa_plataforma_override;
 
-        if (
-          !empErr &&
-          emp &&
-          emp.taxa_plataforma !== null &&
-          emp.taxa_plataforma !== undefined
-        ) {
-          const n = Number(emp.taxa_plataforma);
-          taxaPercent = Number.isFinite(n) ? n : 0;
+      // 1) override da quadra
+      if (quadraOverride !== null && quadraOverride !== undefined) {
+        const n = Number(quadraOverride);
+        taxaPercent = Number.isFinite(n) ? n : 0;
+      } else {
+        // 2) taxa global do gestor
+        const gestorId = quadra?.gestor_id || null;
+
+        if (gestorId) {
+          const { data: g, error: gErr } = await supabase
+            .from("gestores")
+            .select("taxa_plataforma_global")
+            .eq("id", gestorId)
+            .single();
+
+          if (
+            !gErr &&
+            g &&
+            g.taxa_plataforma_global !== null &&
+            g.taxa_plataforma_global !== undefined
+          ) {
+            const n = Number(g.taxa_plataforma_global);
+            taxaPercent = Number.isFinite(n) ? n : 0;
+          }
+        }
+
+        // 3) fallback empresa
+        if (!taxaPercent) {
+          const empresaId = quadra?.empresa_id || null;
+
+          if (empresaId) {
+            const { data: emp, error: empErr } = await supabase
+              .from("empresas")
+              .select("taxa_plataforma")
+              .eq("id", empresaId)
+              .single();
+
+            if (
+              !empErr &&
+              emp &&
+              emp.taxa_plataforma !== null &&
+              emp.taxa_plataforma !== undefined
+            ) {
+              const n = Number(emp.taxa_plataforma);
+              taxaPercent = Number.isFinite(n) ? n : 0;
+            }
+          }
         }
       }
 
@@ -9232,6 +9270,7 @@ Obrigado por usar o VaiTerPlay!`;
     return res.sendStatus(200);
   }
 });
+
 
 // ===== BLOCO J - FLOW DATA ENTRYPOINT (/flow-data: decrypt, ping, roteamento básico) =====
 // -----------------------------------------

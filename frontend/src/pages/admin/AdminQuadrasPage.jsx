@@ -546,168 +546,202 @@ useEffect(() => {
       </div>
 
       <div className="vt-modal-body">
-        <form onSubmit={salvar}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <label style={{ fontWeight: 700, fontSize: 13 }}>Empresa *</label>
-              <select
-                name="empresaId"
-                value={form.empresaId}
-                onChange={handleChange}
-                style={{ padding: 10, borderRadius: 8, border: "1px solid #ddd" }}
-              >
-                <option value="">Selecione...</option>
-                {(empresas || []).map((e) => (
-                  <option key={e.id} value={e.id}>
-                    {e.nome}
-                  </option>
-                ))}
-              </select>
-              <small style={{ opacity: 0.75 }}>
-                O Gestor é inferido automaticamente pela empresa selecionada.
-              </small>
-            </div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <label style={{ fontWeight: 700, fontSize: 13 }}>Status</label>
-              <select
-                name="status"
-                value={form.status}
-                onChange={handleChange}
-                style={{ padding: 10, borderRadius: 8, border: "1px solid #ddd" }}
-              >
-                <option value="ativa">Ativa</option>
-                <option value="inativa">Inativa</option>
-                <option value="manutencao">Manutenção</option>
-              </select>
-            </div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <label style={{ fontWeight: 700, fontSize: 13 }}>Tipo *</label>
-              <input
-                name="tipo"
-                value={form.tipo}
-                onChange={handleChange}
-                style={{ padding: 10, borderRadius: 8, border: "1px solid #ddd" }}
-              />
-            </div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <label style={{ fontWeight: 700, fontSize: 13 }}>Material *</label>
-              <input
-                name="material"
-                value={form.material}
-                onChange={handleChange}
-                style={{ padding: 10, borderRadius: 8, border: "1px solid #ddd" }}
-              />
-            </div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <label style={{ fontWeight: 700, fontSize: 13 }}>Modalidade *</label>
-              <input
-                name="modalidade"
-                value={form.modalidade}
-                onChange={handleChange}
-                style={{ padding: 10, borderRadius: 8, border: "1px solid #ddd" }}
-              />
-            </div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <label style={{ fontWeight: 700, fontSize: 13 }}>
-                Taxa override (opcional)
-              </label>
-              <input
-                name="taxa_plataforma_override"
-                value={form.taxa_plataforma_override}
-                onChange={handleChange}
-                placeholder="ex: 10 (ou 0)"
-                style={{ padding: 10, borderRadius: 8, border: "1px solid #ddd" }}
-              />
-              <small style={{ opacity: 0.75 }}>
-                Se preenchida, sobrescreve a taxa global do Gestor.
-              </small>
-            </div>
-          </div>
-
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr 1fr",
-              gap: 12,
-              marginTop: 14,
-            }}
-          >
-            <div className="photo-slot">
-              <span className="photo-label">Foto 1</span>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) => handleFileChange(e, "foto1")}
-              />
-              {previews.foto1 && (
-                <img
-                  src={previews.foto1}
-                  alt="Prévia foto 1"
-                  className="photo-preview"
-                />
-              )}
-            </div>
-
-            <div className="photo-slot">
-              <span className="photo-label">Foto 2</span>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) => handleFileChange(e, "foto2")}
-              />
-              {previews.foto2 && (
-                <img
-                  src={previews.foto2}
-                  alt="Prévia foto 2"
-                  className="photo-preview"
-                />
-              )}
-            </div>
-
-            <div className="photo-slot">
-              <span className="photo-label">Foto 3</span>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) => handleFileChange(e, "foto3")}
-              />
-              {previews.foto3 && (
-                <img
-                  src={previews.foto3}
-                  alt="Prévia foto 3"
-                  className="photo-preview"
-                />
-              )}
-            </div>
-          </div>
-
-          <div
-            style={{
-              marginTop: 14,
-              display: "flex",
-              gap: 10,
-              justifyContent: "flex-end",
-            }}
-          >
-            <button
-              className="btn-outlined"
-              type="button"
-              onClick={limparForm}
-              disabled={carregando}
-            >
-              Limpar
-            </button>
-            <button className="btn-primary" type="submit" disabled={carregando}>
-              {carregando ? "Salvando..." : "Salvar"}
-            </button>
-          </div>
-        </form>
+  <form onSubmit={salvar}>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <label style={{ fontWeight: 700, fontSize: 13 }}>Empresa *</label>
+        <select
+          name="empresaId"
+          value={form.empresaId}
+          onChange={handleChange}
+          style={{ padding: 10, borderRadius: 8, border: "1px solid #ddd" }}
+        >
+          <option value="">Selecione...</option>
+          {(empresas || []).map((e) => (
+            <option key={e.id} value={e.id}>
+              {e.nome}
+            </option>
+          ))}
+        </select>
+        <small style={{ opacity: 0.75 }}>
+          O Gestor é inferido automaticamente pela empresa selecionada.
+        </small>
       </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <label style={{ fontWeight: 700, fontSize: 13 }}>Status</label>
+        <select
+          name="status"
+          value={form.status}
+          onChange={handleChange}
+          style={{ padding: 10, borderRadius: 8, border: "1px solid #ddd" }}
+        >
+          <option value="ativa">Ativa</option>
+          <option value="inativa">Inativa</option>
+          <option value="manutencao">Manutenção</option>
+        </select>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <label style={{ fontWeight: 700, fontSize: 13 }}>Tipo *</label>
+        <input
+          name="tipo"
+          value={form.tipo}
+          onChange={handleChange}
+          style={{ padding: 10, borderRadius: 8, border: "1px solid #ddd" }}
+        />
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <label style={{ fontWeight: 700, fontSize: 13 }}>Material *</label>
+        <input
+          name="material"
+          value={form.material}
+          onChange={handleChange}
+          style={{ padding: 10, borderRadius: 8, border: "1px solid #ddd" }}
+        />
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <label style={{ fontWeight: 700, fontSize: 13 }}>Modalidade *</label>
+        <input
+          name="modalidade"
+          value={form.modalidade}
+          onChange={handleChange}
+          style={{ padding: 10, borderRadius: 8, border: "1px solid #ddd" }}
+        />
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <label style={{ fontWeight: 700, fontSize: 13 }}>
+          Taxa override (opcional)
+        </label>
+        <input
+          name="taxa_plataforma_override"
+          value={form.taxa_plataforma_override}
+          onChange={handleChange}
+          placeholder="ex: 10 (ou 0)"
+          style={{ padding: 10, borderRadius: 8, border: "1px solid #ddd" }}
+        />
+        <small style={{ opacity: 0.75 }}>
+          Se preenchida, sobrescreve a taxa global do Gestor.
+        </small>
+      </div>
+
+      {/* ✅ NOVO: Avisos (igual Gestor) */}
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 6,
+          gridColumn: "1 / -1",
+        }}
+      >
+        <label style={{ fontWeight: 700, fontSize: 13 }}>Avisos</label>
+        <input
+          name="aviso"
+          value={form.aviso}
+          onChange={handleChange}
+          placeholder="Ex.: Chegar 10 min antes / Proibido travas altas / etc."
+          style={{ padding: 10, borderRadius: 8, border: "1px solid #ddd" }}
+        />
+        <small style={{ opacity: 0.75 }}>
+          Avisos importantes antes da reserva.
+        </small>
+      </div>
+
+      {/* ✅ NOVO: Informações/Descrição (igual Gestor) */}
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 6,
+          gridColumn: "1 / -1",
+        }}
+      >
+        <label style={{ fontWeight: 700, fontSize: 13 }}>
+          Informações / Descrição
+        </label>
+        <textarea
+          name="informacoes"
+          value={form.informacoes}
+          onChange={handleChange}
+          rows={5}
+          placeholder="Descreva a quadra, dimensões, estrutura, bar/estacionamento/vestiário, regras..."
+          style={{
+            padding: 10,
+            borderRadius: 8,
+            border: "1px solid #ddd",
+            resize: "vertical",
+          }}
+        />
+        <small style={{ opacity: 0.75 }}>
+          Texto completo que ajuda o cliente a decidir.
+        </small>
+      </div>
+    </div>
+
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "1fr 1fr 1fr",
+        gap: 12,
+        marginTop: 14,
+      }}
+    >
+      <div className="photo-slot">
+        <span className="photo-label">Foto 1</span>
+        <input
+          type="file"
+          accept="image/*"
+          onChange={(e) => handleFileChange(e, "foto1")}
+        />
+        {previews.foto1 && (
+          <img src={previews.foto1} alt="Prévia foto 1" className="photo-preview" />
+        )}
+      </div>
+
+      <div className="photo-slot">
+        <span className="photo-label">Foto 2</span>
+        <input
+          type="file"
+          accept="image/*"
+          onChange={(e) => handleFileChange(e, "foto2")}
+        />
+        {previews.foto2 && (
+          <img src={previews.foto2} alt="Prévia foto 2" className="photo-preview" />
+        )}
+      </div>
+
+      <div className="photo-slot">
+        <span className="photo-label">Foto 3</span>
+        <input
+          type="file"
+          accept="image/*"
+          onChange={(e) => handleFileChange(e, "foto3")}
+        />
+        {previews.foto3 && (
+          <img src={previews.foto3} alt="Prévia foto 3" className="photo-preview" />
+        )}
+      </div>
+    </div>
+
+    <div style={{ marginTop: 14, display: "flex", gap: 10, justifyContent: "flex-end" }}>
+      <button
+        className="btn-outlined"
+        type="button"
+        onClick={limparForm}
+        disabled={carregando}
+      >
+        Limpar
+      </button>
+      <button className="btn-primary" type="submit" disabled={carregando}>
+        {carregando ? "Salvando..." : "Salvar"}
+      </button>
+    </div>
+  </form>
+</div>
+
     </div>
   </div>
 )}
