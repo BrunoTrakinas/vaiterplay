@@ -111,7 +111,7 @@ async function enviarEmail(to, subject, html) {
 function getFrontendBaseUrl() {
   return (
     process.env.FRONTEND_BASE_URL ||
-    "http://localhost:5173" // ajuste se seu front roda em outra porta
+    "https://vaiterplay.netlify.app/" // ajuste se seu front roda em outra porta
   );
 }
 
