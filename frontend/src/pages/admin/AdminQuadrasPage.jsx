@@ -41,39 +41,53 @@ export default function AdminQuadrasPage() {
   });
 
   // ----------------------------
-  // carregar dados
-  // ----------------------------
-  async function carregarTudo() {
-    try {
-      setCarregando(true);
-      setErro("");
-      setMsg("");
+// carregar dados
+// ----------------------------
+async function carregarTudo() {
+  try {
+    setCarregando(true);
+    setErro("");
+    setMsg("");
 
-      // 1) empresas (para dropdown)
-      // Reaproveita sua rota admin de empresas (se já existir).
-      // Se você não tiver GET /admin/empresas, me avisa que eu adapto para usar /gestor/empresas + permissões.
-      const respEmp = await api.get("/admin/empresas");
-      setEmpresas(respEmp.data || []);
+    // 1) empresas (para dropdown)
+    // Reaproveita sua rota admin de empresas (se já existir).
+    // Se você não tiver GET /admin/empresas, me avisa que eu adapto para usar /gestor/empresas + permissões.
+    const respEmp = await api.get("/admin/empresas");
+    setEmpresas(respEmp.data || []);
 
-      // 2) quadras
-      const respQ = await api.get("/admin/quadras");
-      setQuadras(respQ.data || []);
-    } catch (e) {
-      console.error("[ADMIN/QUADRAS] Erro ao carregar:", e);
-      setErro(e.response?.data?.error || "Erro ao carregar quadras (admin).");
-    } finally {
-      setCarregando(false);
+    // 2) quadras
+    const respQ = await api.get("/admin/quadras");
+    setQuadras(respQ.data || []);
+  } catch (e) {
+    console.error("[ADMIN/QUADRAS] Erro ao carregar:", e);
+    setErro(e.response?.data?.error || "Erro ao carregar quadras (admin).");
+  } finally {
+    setCarregando(false);
+  }
+}
+
+useEffect(() => {
+  carregarTudo();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, []);
+
+// ✅ NOVO: fechar modal com ESC
+useEffect(() => {
+  function onKeyDown(e) {
+    if (e.key === "Escape" && formAberto) {
+      setFormAberto(false);
+      limparForm();
     }
   }
 
-  useEffect(() => {
-    carregarTudo();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  window.addEventListener("keydown", onKeyDown);
+  return () => window.removeEventListener("keydown", onKeyDown);
+}, [formAberto]);
 
-  // ----------------------------
-  // helpers form
-  // ----------------------------
+// ----------------------------
+// helpers form
+// ----------------------------
+
   function limparForm() {
     setModoEdicao(false);
     setQuadraEditId(null);
@@ -492,145 +506,212 @@ export default function AdminQuadrasPage() {
         </div>
       )}
 
-      {/* FORM (criar/editar) */}
-      {formAberto && (
-        <div className="card" style={{ padding: 16 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-            <h2 style={{ margin: 0 }}>
-              {modoEdicao ? "Editar quadra (Admin)" : "Nova quadra (Admin)"}
-            </h2>
+      {/* MODAL FORM (criar/editar) */}
+{formAberto && (
+  <div
+    className="vt-modal-overlay"
+    onClick={() => {
+      setFormAberto(false);
+      limparForm();
+    }}
+  >
+    <div
+      className="vt-modal"
+      onClick={(e) => e.stopPropagation()} // não fecha ao clicar dentro
+    >
+      <div className="vt-modal-header">
+        <div>
+          <h2 style={{ margin: 0 }}>
+            {modoEdicao ? "Editar quadra (Admin)" : "Nova quadra (Admin)"}
+          </h2>
+          <p style={{ margin: 0, opacity: 0.7, fontSize: 13 }}>
+            {modoEdicao
+              ? "Edite os dados da quadra e salve."
+              : "Cadastre a nova quadra e salve."}
+          </p>
+        </div>
+
+        <button
+          className="vt-modal-close"
+          type="button"
+          onClick={() => {
+            setFormAberto(false);
+            limparForm();
+          }}
+          aria-label="Fechar"
+          title="Fechar"
+        >
+          ✕
+        </button>
+      </div>
+
+      <div className="vt-modal-body">
+        <form onSubmit={salvar}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <label style={{ fontWeight: 700, fontSize: 13 }}>Empresa *</label>
+              <select
+                name="empresaId"
+                value={form.empresaId}
+                onChange={handleChange}
+                style={{ padding: 10, borderRadius: 8, border: "1px solid #ddd" }}
+              >
+                <option value="">Selecione...</option>
+                {(empresas || []).map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.nome}
+                  </option>
+                ))}
+              </select>
+              <small style={{ opacity: 0.75 }}>
+                O Gestor é inferido automaticamente pela empresa selecionada.
+              </small>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <label style={{ fontWeight: 700, fontSize: 13 }}>Status</label>
+              <select
+                name="status"
+                value={form.status}
+                onChange={handleChange}
+                style={{ padding: 10, borderRadius: 8, border: "1px solid #ddd" }}
+              >
+                <option value="ativa">Ativa</option>
+                <option value="inativa">Inativa</option>
+                <option value="manutencao">Manutenção</option>
+              </select>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <label style={{ fontWeight: 700, fontSize: 13 }}>Tipo *</label>
+              <input
+                name="tipo"
+                value={form.tipo}
+                onChange={handleChange}
+                style={{ padding: 10, borderRadius: 8, border: "1px solid #ddd" }}
+              />
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <label style={{ fontWeight: 700, fontSize: 13 }}>Material *</label>
+              <input
+                name="material"
+                value={form.material}
+                onChange={handleChange}
+                style={{ padding: 10, borderRadius: 8, border: "1px solid #ddd" }}
+              />
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <label style={{ fontWeight: 700, fontSize: 13 }}>Modalidade *</label>
+              <input
+                name="modalidade"
+                value={form.modalidade}
+                onChange={handleChange}
+                style={{ padding: 10, borderRadius: 8, border: "1px solid #ddd" }}
+              />
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <label style={{ fontWeight: 700, fontSize: 13 }}>
+                Taxa override (opcional)
+              </label>
+              <input
+                name="taxa_plataforma_override"
+                value={form.taxa_plataforma_override}
+                onChange={handleChange}
+                placeholder="ex: 10 (ou 0)"
+                style={{ padding: 10, borderRadius: 8, border: "1px solid #ddd" }}
+              />
+              <small style={{ opacity: 0.75 }}>
+                Se preenchida, sobrescreve a taxa global do Gestor.
+              </small>
+            </div>
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr 1fr",
+              gap: 12,
+              marginTop: 14,
+            }}
+          >
+            <div className="photo-slot">
+              <span className="photo-label">Foto 1</span>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => handleFileChange(e, "foto1")}
+              />
+              {previews.foto1 && (
+                <img
+                  src={previews.foto1}
+                  alt="Prévia foto 1"
+                  className="photo-preview"
+                />
+              )}
+            </div>
+
+            <div className="photo-slot">
+              <span className="photo-label">Foto 2</span>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => handleFileChange(e, "foto2")}
+              />
+              {previews.foto2 && (
+                <img
+                  src={previews.foto2}
+                  alt="Prévia foto 2"
+                  className="photo-preview"
+                />
+              )}
+            </div>
+
+            <div className="photo-slot">
+              <span className="photo-label">Foto 3</span>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => handleFileChange(e, "foto3")}
+              />
+              {previews.foto3 && (
+                <img
+                  src={previews.foto3}
+                  alt="Prévia foto 3"
+                  className="photo-preview"
+                />
+              )}
+            </div>
+          </div>
+
+          <div
+            style={{
+              marginTop: 14,
+              display: "flex",
+              gap: 10,
+              justifyContent: "flex-end",
+            }}
+          >
             <button
               className="btn-outlined"
               type="button"
-              onClick={() => {
-                setFormAberto(false);
-                limparForm();
-              }}
+              onClick={limparForm}
+              disabled={carregando}
             >
-              Fechar
+              Limpar
+            </button>
+            <button className="btn-primary" type="submit" disabled={carregando}>
+              {carregando ? "Salvando..." : "Salvar"}
             </button>
           </div>
+        </form>
+      </div>
+    </div>
+  </div>
+)}
 
-          <form onSubmit={salvar} style={{ marginTop: 12 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <label style={{ fontWeight: 700, fontSize: 13 }}>Empresa *</label>
-                <select
-                  name="empresaId"
-                  value={form.empresaId}
-                  onChange={handleChange}
-                  style={{ padding: 10, borderRadius: 8, border: "1px solid #ddd" }}
-                >
-                  <option value="">Selecione...</option>
-                  {(empresas || []).map((e) => (
-                    <option key={e.id} value={e.id}>
-                      {e.nome}
-                    </option>
-                  ))}
-                </select>
-                <small style={{ opacity: 0.75 }}>
-                  O Gestor é inferido automaticamente pela empresa selecionada.
-                </small>
-              </div>
-
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <label style={{ fontWeight: 700, fontSize: 13 }}>Status</label>
-                <select
-                  name="status"
-                  value={form.status}
-                  onChange={handleChange}
-                  style={{ padding: 10, borderRadius: 8, border: "1px solid #ddd" }}
-                >
-                  <option value="ativa">Ativa</option>
-                  <option value="inativa">Inativa</option>
-                  <option value="manutencao">Manutenção</option>
-                </select>
-              </div>
-
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <label style={{ fontWeight: 700, fontSize: 13 }}>Tipo *</label>
-                <input
-                  name="tipo"
-                  value={form.tipo}
-                  onChange={handleChange}
-                  style={{ padding: 10, borderRadius: 8, border: "1px solid #ddd" }}
-                />
-              </div>
-
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <label style={{ fontWeight: 700, fontSize: 13 }}>Material *</label>
-                <input
-                  name="material"
-                  value={form.material}
-                  onChange={handleChange}
-                  style={{ padding: 10, borderRadius: 8, border: "1px solid #ddd" }}
-                />
-              </div>
-
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <label style={{ fontWeight: 700, fontSize: 13 }}>Modalidade *</label>
-                <input
-                  name="modalidade"
-                  value={form.modalidade}
-                  onChange={handleChange}
-                  style={{ padding: 10, borderRadius: 8, border: "1px solid #ddd" }}
-                />
-              </div>
-
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <label style={{ fontWeight: 700, fontSize: 13 }}>
-                  Taxa override (opcional)
-                </label>
-                <input
-                  name="taxa_plataforma_override"
-                  value={form.taxa_plataforma_override}
-                  onChange={handleChange}
-                  placeholder="ex: 10 (ou 0)"
-                  style={{ padding: 10, borderRadius: 8, border: "1px solid #ddd" }}
-                />
-                <small style={{ opacity: 0.75 }}>
-                  Se preenchida, sobrescreve a taxa global do Gestor.
-                </small>
-              </div>
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginTop: 14 }}>
-              <div className="photo-slot">
-                <span className="photo-label">Foto 1</span>
-                <input type="file" accept="image/*" onChange={(e) => handleFileChange(e, "foto1")} />
-                {previews.foto1 && (
-                  <img src={previews.foto1} alt="Prévia foto 1" className="photo-preview" />
-                )}
-              </div>
-
-              <div className="photo-slot">
-                <span className="photo-label">Foto 2</span>
-                <input type="file" accept="image/*" onChange={(e) => handleFileChange(e, "foto2")} />
-                {previews.foto2 && (
-                  <img src={previews.foto2} alt="Prévia foto 2" className="photo-preview" />
-                )}
-              </div>
-
-              <div className="photo-slot">
-                <span className="photo-label">Foto 3</span>
-                <input type="file" accept="image/*" onChange={(e) => handleFileChange(e, "foto3")} />
-                {previews.foto3 && (
-                  <img src={previews.foto3} alt="Prévia foto 3" className="photo-preview" />
-                )}
-              </div>
-            </div>
-
-            <div style={{ marginTop: 14, display: "flex", gap: 10, justifyContent: "flex-end" }}>
-              <button className="btn-outlined" type="button" onClick={limparForm} disabled={carregando}>
-                Limpar
-              </button>
-              <button className="btn-primary" type="submit" disabled={carregando}>
-                {carregando ? "Salvando..." : "Salvar"}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
     </div>
   );
 }
