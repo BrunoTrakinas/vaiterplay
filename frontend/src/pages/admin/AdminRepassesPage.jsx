@@ -145,7 +145,7 @@ export default function AdminRepassesPage() {
     <div style={{ padding: 18 }}>
       <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800 }}>Repasses (Admin)</h1>
       <p style={{ marginTop: 6, opacity: 0.8 }}>
-        Gere repasses por gestor e marque como pago (manual).
+        Gere repasses por gestor e controle o que o Admin precisa <b>pagar / repassar</b> ao gestor (manual).
       </p>
 
       <div style={panel}>

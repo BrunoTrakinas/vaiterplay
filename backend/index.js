@@ -13172,6 +13172,353 @@ app.delete("/gestor/reservas/:id", autenticarPainel, async (req, res) => {
     });
   }
 });
+// ==========================================================
+// ADMIN — RESERVAS (GLOBAL)
+// - Admin enxerga tudo
+// - Admin cria/edita/cancela
+// - Reservas do painel: origem="painel" e status="pending" (não gera financeiro/repasses)
+// - Anti-duplicidade: bloqueia mesmo slot quando status != "canceled"
+// ==========================================================
+
+// helper local (não depende de nada externo)
+function isOcupando(status) {
+  return String(status || "").toLowerCase() !== "canceled";
+}
+
+// -----------------------------------------
+// GET /admin/reservas
+// Query (opcionais):
+//  - inicio=YYYY-MM-DD
+//  - fim=YYYY-MM-DD
+//  - status=pending|paid|canceled
+//  - origem=painel|whatsapp
+//  - gestorId=UUID
+//  - empresaId=UUID
+//  - quadraId=UUID
+//  - cpf=texto
+//  - phone=texto
+// -----------------------------------------
+app.get("/admin/reservas", autenticarPainel, garantirAdmin, async (req, res) => {
+  try {
+    const {
+      inicio,
+      fim,
+      status,
+      origem,
+      gestorId,
+      empresaId,
+      quadraId,
+      cpf,
+      phone
+    } = req.query || {};
+
+    let q = supabase
+      .from("reservas")
+      .select(
+        `
+        id,
+        quadra_id,
+        user_cpf,
+        data,
+        hora,
+        status,
+        preco_total,
+        pago_via_pix,
+        created_at,
+        phone,
+        id_transacao_pix,
+        usuario_id,
+        origem,
+        quadras (
+          id,
+          tipo,
+          material,
+          modalidade,
+          gestor_id,
+          empresa_id,
+          taxa_plataforma_override,
+          empresas (
+            id,
+            nome,
+            gestor_id
+          )
+        )
+        `
+      )
+      .order("created_at", { ascending: false });
+
+    if (status) q = q.eq("status", status);
+    if (origem) q = q.eq("origem", origem);
+    if (quadraId) q = q.eq("quadra_id", quadraId);
+    if (cpf) q = q.ilike("user_cpf", `%${cpf}%`);
+    if (phone) q = q.ilike("phone", `%${phone}%`);
+
+    // filtro por período (coluna "data" da reserva)
+    if (inicio) q = q.gte("data", inicio);
+    if (fim) q = q.lte("data", fim);
+
+    // filtro por gestor/empresa (via relacionamento de quadras)
+    if (gestorId) q = q.eq("quadras.gestor_id", gestorId);
+    if (empresaId) q = q.eq("quadras.empresa_id", empresaId);
+
+    const { data: itens, error } = await q;
+
+    if (error) {
+      console.error("[ADMIN/RESERVAS][GET] Erro:", error);
+      return res.status(500).json({ error: "Erro ao listar reservas (admin)." });
+    }
+
+    return res.json({ itens: itens || [] });
+  } catch (err) {
+    console.error("[ADMIN/RESERVAS][GET] Erro inesperado:", err);
+    return res.status(500).json({ error: "Erro ao listar reservas (admin)." });
+  }
+});
+
+// -----------------------------------------
+// POST /admin/reservas
+// Body:
+//  - quadraId (obrigatório)
+//  - data (YYYY-MM-DD) obrigatório
+//  - hora (ex: "18:00") obrigatório
+//  - cpf (opcional)
+//  - phone (opcional)
+//  - preco_total (opcional)
+// Regras (PADRÃO PAINEL):
+// - origem="painel"
+// - status="paid" (CONFIRMADA no ato, igual painel do gestor)
+// - NÃO cria pagamentos / NÃO gera repasse (pago_via_pix=false)
+// - Anti-duplicidade: bloqueia se já existir reserva no mesmo slot com status != canceled
+// -----------------------------------------
+app.post("/admin/reservas", autenticarPainel, garantirAdmin, async (req, res) => {
+  try {
+    const { quadraId, data, hora, cpf, phone, preco_total } = req.body || {};
+
+    if (!quadraId || !data || !hora) {
+      return res.status(400).json({ error: "quadraId, data e hora são obrigatórios." });
+    }
+
+    // 1) Anti-duplicidade (ocupa slot se status != canceled)
+    const { data: existe, error: exErr } = await supabase
+      .from("reservas")
+      .select("id, status")
+      .eq("quadra_id", quadraId)
+      .eq("data", data)
+      .eq("hora", hora)
+      .limit(1);
+
+    if (exErr) {
+      console.error("[ADMIN/RESERVAS][POST] Erro ao checar duplicidade:", exErr);
+      return res.status(500).json({ error: "Erro ao validar disponibilidade do horário." });
+    }
+
+    if (existe && existe.length && isOcupando(existe[0].status)) {
+      return res.status(409).json({ error: "Horário já reservado para esta quadra (pending/paid)." });
+    }
+
+    // 2) Cria reserva manual/painel (CONFIRMADA)
+    const payload = {
+      quadra_id: quadraId,
+      user_cpf: cpf || null,
+      phone: phone || null,
+      data,
+      hora,
+
+      // ✅ PADRÃO PAINEL
+      status: "paid",
+      origem: "painel",
+
+      preco_total: Number(preco_total || 0),
+
+      // ✅ NÃO entra em financeiro/repasses
+      pago_via_pix: false,
+      id_transacao_pix: null
+    };
+
+    const { data: criada, error: insErr } = await supabase
+      .from("reservas")
+      .insert([payload])
+      .select(
+        `
+        id,
+        quadra_id,
+        user_cpf,
+        data,
+        hora,
+        status,
+        preco_total,
+        created_at,
+        phone,
+        origem,
+        pago_via_pix,
+        id_transacao_pix,
+        quadras (
+          id,
+          tipo,
+          material,
+          modalidade,
+          gestor_id,
+          empresa_id,
+          empresas ( id, nome )
+        )
+        `
+      )
+      .single();
+
+    if (insErr) {
+      console.error("[ADMIN/RESERVAS][POST] Erro ao inserir:", insErr);
+      return res.status(500).json({ error: "Erro ao criar reserva (admin)." });
+    }
+
+    return res.status(201).json({ item: criada });
+  } catch (err) {
+    console.error("[ADMIN/RESERVAS][POST] Erro inesperado:", err);
+    return res.status(500).json({ error: "Erro ao criar reserva (admin)." });
+  }
+});
+
+
+
+// -----------------------------------------
+// PUT /admin/reservas/:id
+// Body (qualquer um):
+//  - quadraId, data, hora, cpf, phone, preco_total
+//
+// Regras:
+// - mantém origem="painel" para reservas criadas no painel
+// - NÃO permite setar paid manualmente aqui (status não é editável por essa rota)
+// - Anti-duplicidade ao mudar slot (quadra/data/hora)
+// -----------------------------------------
+app.put("/admin/reservas/:id", autenticarPainel, garantirAdmin, async (req, res) => {
+  try {
+    const reservaId = req.params.id;
+    const { quadraId, data, hora, cpf, phone, preco_total } = req.body || {};
+
+    // 1) Carrega reserva atual
+    const { data: atual, error: atErr } = await supabase
+      .from("reservas")
+      .select("id, quadra_id, data, hora, status, origem")
+      .eq("id", reservaId)
+      .single();
+
+    if (atErr || !atual) {
+      return res.status(404).json({ error: "Reserva não encontrada." });
+    }
+
+    // 2) Se mudar slot, valida duplicidade
+    const novoQuadraId = quadraId || atual.quadra_id;
+    const novaData = data || atual.data;
+    const novaHora = hora || atual.hora;
+
+    const mudouSlot =
+      String(novoQuadraId) !== String(atual.quadra_id) ||
+      String(novaData) !== String(atual.data) ||
+      String(novaHora) !== String(atual.hora);
+
+    if (mudouSlot) {
+      const { data: existe, error: exErr } = await supabase
+        .from("reservas")
+        .select("id, status")
+        .eq("quadra_id", novoQuadraId)
+        .eq("data", novaData)
+        .eq("hora", novaHora)
+        .neq("id", reservaId)
+        .limit(1);
+
+      if (exErr) {
+        console.error("[ADMIN/RESERVAS][PUT] Erro ao checar duplicidade:", exErr);
+        return res.status(500).json({ error: "Erro ao validar disponibilidade do horário." });
+      }
+
+      if (existe && existe.length && isOcupando(existe[0].status)) {
+        return res.status(409).json({ error: "Horário já reservado para esta quadra (pending/paid)." });
+      }
+    }
+
+    // 3) Atualiza campos permitidos (status NÃO)
+    const patch = {
+      quadra_id: novoQuadraId,
+      data: novaData,
+      hora: novaHora,
+      user_cpf: cpf !== undefined ? (cpf || null) : undefined,
+      phone: phone !== undefined ? (phone || null) : undefined,
+      preco_total: preco_total !== undefined ? Number(preco_total || 0) : undefined,
+      updated_at: new Date().toISOString()
+    };
+
+    // remove undefined
+    Object.keys(patch).forEach((k) => patch[k] === undefined && delete patch[k]);
+
+    const { data: atualizado, error: upErr } = await supabase
+      .from("reservas")
+      .update(patch)
+      .eq("id", reservaId)
+      .select(
+        `
+        id,
+        quadra_id,
+        user_cpf,
+        data,
+        hora,
+        status,
+        preco_total,
+        created_at,
+        phone,
+        origem,
+        quadras (
+          id,
+          tipo,
+          material,
+          modalidade,
+          gestor_id,
+          empresa_id,
+          empresas ( id, nome )
+        )
+        `
+      )
+      .single();
+
+    if (upErr) {
+      console.error("[ADMIN/RESERVAS][PUT] Erro ao atualizar:", upErr);
+      return res.status(500).json({ error: "Erro ao atualizar reserva (admin)." });
+    }
+
+    return res.json({ item: atualizado });
+  } catch (err) {
+    console.error("[ADMIN/RESERVAS][PUT] Erro inesperado:", err);
+    return res.status(500).json({ error: "Erro ao atualizar reserva (admin)." });
+  }
+});
+
+// -----------------------------------------
+// DELETE /admin/reservas/:id  (cancelamento "soft")
+// Regra: vira status="canceled"
+// -----------------------------------------
+app.delete("/admin/reservas/:id", autenticarPainel, garantirAdmin, async (req, res) => {
+  try {
+    const reservaId = req.params.id;
+
+    const { data: atualizado, error } = await supabase
+      .from("reservas")
+      .update({
+        status: "canceled",
+        updated_at: new Date().toISOString()
+      })
+      .eq("id", reservaId)
+      .select("id, status")
+      .single();
+
+    if (error) {
+      console.error("[ADMIN/RESERVAS][DELETE] Erro:", error);
+      return res.status(500).json({ error: "Erro ao cancelar reserva (admin)." });
+    }
+
+    return res.json({ ok: true, item: atualizado });
+  } catch (err) {
+    console.error("[ADMIN/RESERVAS][DELETE] Erro inesperado:", err);
+    return res.status(500).json({ error: "Erro ao cancelar reserva (admin)." });
+  }
+});
 
 
 // ============================================================================
@@ -14424,37 +14771,41 @@ app.post(
         });
       }
 
-      // Totais calculados a partir de pagamentos (já existem colunas prontas no schema)
-      let totalTaxa = 0;
-      let totalLiquido = 0;
+      // Totais calculados a partir de pagamentos (schema: bruto/taxa/liquido)
+let totalBruto = 0;
+let totalTaxa = 0;
+let totalLiquido = 0;
 
-      for (const p of pagamentos) {
-        totalTaxa += Number(p.taxa_plataforma || 0);
-        totalLiquido += Number(p.valor_liquido_gestor || 0);
-      }
+for (const p of pagamentos) {
+  totalBruto += Number(p.valor_total || 0);
+  totalTaxa += Number(p.taxa_plataforma || 0);
+  totalLiquido += Number(p.valor_liquido_gestor || 0);
+}
 
-      const competenciaYYYYMM = normalizarYYYYMM(competencia) || periodo.from.slice(0, 7);
-      const competenciaData = firstDayFromYYYYMM(competenciaYYYYMM);
+const competenciaYYYYMM = normalizarYYYYMM(competencia) || periodo.from.slice(0, 7);
+const competenciaData = firstDayFromYYYYMM(competenciaYYYYMM);
 
-      // 1) cria repasse
-      const { data: repasseCriado, error: errRep } = await supabase
-        .from("repasses")
-        .insert([
-          {
-            gestor_id: gestorId,
-            competencia: competenciaData, // date
-            valor_total_taxa: totalTaxa,
-            valor_total_liquido: totalLiquido,
-            status: "pendente"
-          }
-        ])
-        .select("*")
-        .single();
+// 1) cria repasse
+const { data: repasseCriado, error: errRep } = await supabase
+  .from("repasses")
+  .insert([
+    {
+      gestor_id: gestorId,
+      competencia: competenciaData, // date (YYYY-MM-01)
+      valor_total_bruto: round2(totalBruto),
+      valor_total_taxa: round2(totalTaxa),
+      valor_total_liquido: round2(totalLiquido),
+      status: "pendente"
+    }
+  ])
+  .select("*")
+  .single();
 
-      if (errRep) {
-        console.error("[REPASSE] Erro ao criar repasse:", errRep);
-        throw errRep;
-      }
+if (errRep) {
+  console.error("[REPASSE] Erro ao criar repasse:", errRep);
+  throw errRep;
+}
+
 
       // 2) vincula pagamentos ao repasse
       const vinculosInsert = pagamentos.map((p) => ({
