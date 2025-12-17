@@ -526,7 +526,8 @@ const empresasGlobal = useMemo(() => {
   // Cinema: ao trocar empresa, limpa quadra (pra não ficar inconsistente)
   if (modo === "cinema") {
     setQuadraId("");
-    setCinemaGrade([]); // opcional: limpa a grade na troca
+    setCinemaGrade([]);
+    setSlotSelecionado(null); // opcional: limpa a grade na troca
   }
 
   // Global: se trocar gestor/empresa, limpa quadra também
