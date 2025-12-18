@@ -523,98 +523,184 @@ function AvancadoModal({
           </div>
 
           <div style={styles.body}>
-            <div className="card" style={{ padding: 12 }}>
-              <div className="row g-3">
-                <div className="col-lg-3">
-                  <label style={styles.fLabel}>Início</label>
-                  <input className="form-control" type="date" value={inicio} onChange={(e) => setInicio(e.target.value)} />
-                </div>
+            {/* FILTROS (Avançado) — dropdowns “bonitos” */}
+<div className="card" style={{ padding: 16, borderRadius: 12 }}>
+  <div className="row g-4">
+    <div className="col-lg-3 col-md-6">
+      <div style={styles.field}>
+        <label style={styles.fLabel}>Início</label>
+        <input
+          className="form-control"
+          style={styles.control}
+          type="date"
+          value={inicio}
+          onChange={(e) => setInicio(e.target.value)}
+        />
+      </div>
+    </div>
 
-                <div className="col-lg-3">
-                  <label style={styles.fLabel}>Fim</label>
-                  <input className="form-control" type="date" value={fim} onChange={(e) => setFim(e.target.value)} />
-                </div>
+    <div className="col-lg-3 col-md-6">
+      <div style={styles.field}>
+        <label style={styles.fLabel}>Fim</label>
+        <input
+          className="form-control"
+          style={styles.control}
+          type="date"
+          value={fim}
+          onChange={(e) => setFim(e.target.value)}
+        />
+      </div>
+    </div>
 
-                <div className="col-lg-3">
-                  <label style={styles.fLabel}>Status</label>
-                  <select className="form-select" value={status} onChange={(e) => setStatus(e.target.value)}>
-                    <option value="">Todos</option>
-                    <option value="pending">pending</option>
-                    <option value="paid">paid</option>
-                    <option value="canceled">canceled</option>
-                  </select>
-                </div>
+    <div className="col-lg-3 col-md-6">
+      <div style={styles.field}>
+        <label style={styles.fLabel}>Status</label>
+        <select
+          className="form-select"
+          style={styles.control}
+          value={status}
+          onChange={(e) => setStatus(e.target.value)}
+        >
+          <option value="">Todos</option>
+          <option value="pending">pending</option>
+          <option value="paid">paid</option>
+          <option value="canceled">canceled</option>
+        </select>
+      </div>
+    </div>
 
-                <div className="col-lg-3">
-                  <label style={styles.fLabel}>Origem</label>
-                  <select className="form-select" value={origem} onChange={(e) => setOrigem(e.target.value)}>
-                    <option value="">Todas</option>
-                    <option value="painel">painel</option>
-                    <option value="whatsapp">whatsapp</option>
-                  </select>
-                </div>
+    <div className="col-lg-3 col-md-6">
+      <div style={styles.field}>
+        <label style={styles.fLabel}>Origem</label>
+        <select
+          className="form-select"
+          style={styles.control}
+          value={origem}
+          onChange={(e) => setOrigem(e.target.value)}
+        >
+          <option value="">Todas</option>
+          <option value="painel">painel</option>
+          <option value="whatsapp">whatsapp</option>
+        </select>
+      </div>
+    </div>
 
-                <div className="col-lg-4">
-                  <label style={styles.fLabel}>Gestor</label>
-                  <select className="form-select" value={gestorId} onChange={(e) => setGestorId(e.target.value)}>
-                    <option value="">Todos</option>
-                    {(gestores || []).map((g) => (
-                      <option key={g.id} value={g.id}>
-                        {g.nome} ({g.email})
-                      </option>
-                    ))}
-                  </select>
-                </div>
+    <div className="col-lg-4 col-md-6">
+      <div style={styles.field}>
+        <label style={styles.fLabel}>Gestor</label>
+        <select
+          className="form-select"
+          style={styles.control}
+          value={gestorId}
+          onChange={(e) => setGestorId(e.target.value)}
+        >
+          <option value="">Todos</option>
+          {(gestores || []).map((g) => (
+            <option key={g.id} value={g.id}>
+              {g.nome} ({g.email})
+            </option>
+          ))}
+        </select>
+      </div>
+    </div>
 
-                <div className="col-lg-4">
-                  <label style={styles.fLabel}>Empresa</label>
-                  <select className="form-select" value={empresaId} onChange={(e) => setEmpresaId(e.target.value)}>
-                    <option value="">Todas</option>
-                    {(empresasFiltradas || []).map((e) => (
-                      <option key={e.id} value={e.id}>
-                        {e.nome}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+    <div className="col-lg-4 col-md-6">
+      <div style={styles.field}>
+        <label style={styles.fLabel}>Empresa</label>
+        <select
+          className="form-select"
+          style={styles.control}
+          value={empresaId}
+          onChange={(e) => setEmpresaId(e.target.value)}
+        >
+          <option value="">Todas</option>
+          {(empresasFiltradas || []).map((e) => (
+            <option key={e.id} value={e.id}>
+              {e.nome}
+            </option>
+          ))}
+        </select>
+      </div>
+    </div>
 
-                <div className="col-lg-4">
-                  <label style={styles.fLabel}>Quadra</label>
-                  <select className="form-select" value={quadraId} onChange={(e) => setQuadraId(e.target.value)}>
-                    <option value="">Todas</option>
-                    {(quadrasFiltradas || []).map((q) => (
-                      <option key={q.id} value={q.id}>
-                        {formatNomeQuadra(q)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+    <div className="col-lg-4 col-md-6">
+      <div style={styles.field}>
+        <label style={styles.fLabel}>Quadra</label>
+        <select
+          className="form-select"
+          style={styles.control}
+          value={quadraId}
+          onChange={(e) => setQuadraId(e.target.value)}
+        >
+          <option value="">Todas</option>
+          {(quadrasFiltradas || []).map((q) => (
+            <option key={q.id} value={q.id}>
+              {formatNomeQuadra(q)}
+            </option>
+          ))}
+        </select>
+      </div>
+    </div>
 
-                <div className="col-lg-3">
-                  <label style={styles.fLabel}>CPF</label>
-                  <input className="form-control" value={cpf} onChange={(e) => setCpf(e.target.value)} placeholder="Buscar por CPF" />
-                </div>
+    <div className="col-lg-3 col-md-6">
+      <div style={styles.field}>
+        <label style={styles.fLabel}>CPF</label>
+        <input
+          className="form-control"
+          style={styles.control}
+          value={cpf}
+          onChange={(e) => setCpf(e.target.value)}
+          placeholder="Buscar por CPF"
+        />
+      </div>
+    </div>
 
-                <div className="col-lg-3">
-                  <label style={styles.fLabel}>Telefone</label>
-                  <input
-                    className="form-control"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    placeholder="Buscar por telefone"
-                  />
-                </div>
+    <div className="col-lg-3 col-md-6">
+      <div style={styles.field}>
+        <label style={styles.fLabel}>Telefone</label>
+        <input
+          className="form-control"
+          style={styles.control}
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          placeholder="Buscar por telefone"
+        />
+      </div>
+    </div>
 
-                <div className="col-lg-6" style={{ display: "flex", justifyContent: "flex-end", gap: 10, alignItems: "end" }}>
-                  <button className="btn btn-outline-secondary" type="button" onClick={limpar} disabled={carregando}>
-                    Limpar
-                  </button>
-                  <button className="btn btn-primary" type="button" onClick={buscar} disabled={carregando}>
-                    {carregando ? "Buscando..." : "Buscar"}
-                  </button>
-                </div>
-              </div>
-            </div>
+    <div
+      className="col-lg-6 col-md-12"
+      style={{
+        display: "flex",
+        justifyContent: "flex-end",
+        alignItems: "flex-end",
+        gap: 10,
+      }}
+    >
+      <button
+        className="btn btn-outline-secondary"
+        type="button"
+        onClick={limpar}
+        disabled={carregando}
+        style={{ height: 42, padding: "10px 16px", borderRadius: 10, fontWeight: 800 }}
+      >
+        Limpar
+      </button>
+
+      <button
+        className="btn btn-primary"
+        type="button"
+        onClick={buscar}
+        disabled={carregando}
+        style={{ height: 42, padding: "10px 18px", borderRadius: 10, fontWeight: 900 }}
+      >
+        {carregando ? "Buscando..." : "Buscar"}
+      </button>
+    </div>
+  </div>
+</div>
+
+
 
             {erro && (
               <div className="alert alert-warning mt-3" style={{ marginBottom: 0 }}>
@@ -975,13 +1061,12 @@ export default function AdminReservasPage() {
   return (
     <div className="page">
       <div className="page-header" style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-        <div>
-          <h1 className="page-title">Reservas (Admin)</h1>
-          <p style={{ marginTop: 6, color: "#666", fontSize: 13 }}>
-            Tela principal é o clone do Gestor (Cinema). Use “Avançado” para pesquisa global em tabela.
-          </p>
-        </div>
-
+  <div>
+    <h1 className="page-title">Reservas (Admin)</h1>
+    <p style={{ marginTop: 6, color: "#666", fontSize: 13 }}>
+      Tela principal é o clone do Gestor (Cinema). Use “Avançado” para pesquisa global em tabela.
+    </p>
+  </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <button className="btn btn-outline-secondary" onClick={carregarBases} disabled={carregandoBases}>
             {carregandoBases ? "Recarregando..." : "Recarregar bases"}
@@ -1175,7 +1260,8 @@ export default function AdminReservasPage() {
 
 // -------------------- estilos --------------------
 const styles = {
-  fLabel: { fontSize: 12, fontWeight: 800, marginBottom: 8, color: "#374151" },
+  fLabel: { fontSize: 12, fontWeight: 800, margin: 0, color: "#374151" },
+
 
   // ✅ NOVO: espaçamento e tamanho dos inputs/selects do filtro cinema
   control: {
@@ -1216,7 +1302,7 @@ const styles = {
     padding: "8vh 12px 12px",
   },
   dialog: { width: "100%", maxWidth: 720 },
-  dialogWide: { width: "100%", maxWidth: 1200 },
+  dialogWide: { width: "min(1200px, 96vw)" },
   content: {
     background: "#fff",
     borderRadius: 14,
