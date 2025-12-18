@@ -12463,7 +12463,7 @@ app.get(
       const dtFimISO = formatDateISO(dtFim);
 
       // 2) Busca reservas do período (paid/pending bloqueiam, canceled não bloqueia)
-      const { data: reservas, error: errR } = await supabase
+const { data: reservas, error: errR } = await supabase
   .from("reservas")
   .select(
     `
@@ -12475,13 +12475,13 @@ app.get(
     origem,
     user_cpf,
     phone,
-    nome_cliente,
     preco_total
   `
   )
   .eq("quadra_id", quadraId)
   .gte("data", dtInicioISO)
   .lte("data", dtFimISO);
+
 
 
       if (errR) {
@@ -12612,7 +12612,6 @@ app.get(
                     origem: reserva.origem,
                     cpf: reserva.user_cpf,
                     phone: reserva.phone,
-                    nome_cliente: reserva.nome_cliente,
                     preco_total: reserva.preco_total,
                   }
                 : null,

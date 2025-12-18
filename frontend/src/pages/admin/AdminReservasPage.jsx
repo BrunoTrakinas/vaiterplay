@@ -1000,53 +1000,91 @@ export default function AdminReservasPage() {
       {erroBases && <div className="alert alert-danger">{erroBases}</div>}
 
       {/* FILTROS (Cinema) */}
-      <div className="card" style={{ padding: 14 }}>
-        <div className="row g-3">
-          <div className="col-lg-4">
-            <label style={styles.fLabel}>Gestor (opcional)</label>
-            <select className="form-select" value={gestorId} onChange={(e) => setGestorId(e.target.value)}>
-              <option value="">Todos</option>
-              {(gestores || []).map((g) => (
-                <option key={g.id} value={g.id}>
-                  {g.nome} ({g.email})
-                </option>
-              ))}
-            </select>
-          </div>
+<div className="card" style={{ padding: 14 }}>
+  <div className="row g-3">
+    <div className="col-lg-4">
+      <div style={styles.field}>
+        <label style={styles.fLabel}>Gestor (opcional)</label>
+        <select
+          className="form-select"
+          style={styles.control}
+          value={gestorId}
+          onChange={(e) => setGestorId(e.target.value)}
+        >
+          <option value="">Todos</option>
+          {(gestores || []).map((g) => (
+            <option key={g.id} value={g.id}>
+              {g.nome} ({g.email})
+            </option>
+          ))}
+        </select>
+      </div>
+    </div>
 
-          <div className="col-lg-4">
-            <label style={styles.fLabel}>Empresa/Complexo</label>
-            <select className="form-select" value={empresaId} onChange={(e) => setEmpresaId(e.target.value)}>
-              <option value="">Selecione...</option>
-              {(empresasFiltradas || []).map((e) => (
-                <option key={e.id} value={e.id}>
-                  {e.nome}
-                </option>
-              ))}
-            </select>
-          </div>
+    <div className="col-lg-4">
+      <div style={styles.field}>
+        <label style={styles.fLabel}>Empresa/Complexo</label>
+        <select
+          className="form-select"
+          style={styles.control}
+          value={empresaId}
+          onChange={(e) => setEmpresaId(e.target.value)}
+        >
+          <option value="">Selecione...</option>
+          {(empresasFiltradas || []).map((e) => (
+            <option key={e.id} value={e.id}>
+              {e.nome}
+            </option>
+          ))}
+        </select>
+      </div>
+    </div>
 
-          <div className="col-lg-4">
-            <label style={styles.fLabel}>Quadra</label>
-            <select className="form-select" value={quadraId} onChange={(e) => setQuadraId(e.target.value)}>
-              <option value="">Selecione...</option>
-              {(quadrasFiltradas || []).map((q) => (
-                <option key={q.id} value={q.id}>
-                  {formatNomeQuadra(q)}
-                </option>
-              ))}
-            </select>
-          </div>
+    <div className="col-lg-4">
+      <div style={styles.field}>
+        <label style={styles.fLabel}>Quadra</label>
+        <select
+          className="form-select"
+          style={styles.control}
+          value={quadraId}
+          onChange={(e) => setQuadraId(e.target.value)}
+        >
+          <option value="">Selecione...</option>
+          {(quadrasFiltradas || []).map((q) => (
+            <option key={q.id} value={q.id}>
+              {formatNomeQuadra(q)}
+            </option>
+          ))}
+        </select>
+      </div>
+    </div>
 
-          <div className="col-lg-3">
-            <label style={styles.fLabel}>Início</label>
-            <input className="form-control" type="date" value={cinemaInicio} onChange={(e) => setCinemaInicio(e.target.value)} />
-          </div>
+    <div className="col-lg-3">
+      <div style={styles.field}>
+        <label style={styles.fLabel}>Início</label>
+        <input
+          className="form-control"
+          style={styles.control}
+          type="date"
+          value={cinemaInicio}
+          onChange={(e) => setCinemaInicio(e.target.value)}
+        />
+      </div>
+    </div>
 
-          <div className="col-lg-3">
-            <label style={styles.fLabel}>Fim</label>
-            <input className="form-control" type="date" value={cinemaFim} onChange={(e) => setCinemaFim(e.target.value)} />
-          </div>
+    <div className="col-lg-3">
+      <div style={styles.field}>
+        <label style={styles.fLabel}>Fim</label>
+        <input
+          className="form-control"
+          style={styles.control}
+          type="date"
+          value={cinemaFim}
+          onChange={(e) => setCinemaFim(e.target.value)}
+        />
+      </div>
+    </div>
+
 
           <div className="col-lg-3">
             <label style={styles.fLabel}>Filtro</label>
@@ -1115,8 +1153,25 @@ export default function AdminReservasPage() {
 
 // -------------------- estilos --------------------
 const styles = {
-  fLabel: { fontSize: 12, fontWeight: 800, marginBottom: 6, color: "#374151" },
+  fLabel: { fontSize: 12, fontWeight: 800, marginBottom: 8, color: "#374151" },
 
+  // ✅ NOVO: espaçamento e tamanho dos inputs/selects do filtro cinema
+  control: {
+    height: 42,
+    padding: "10px 12px",
+    borderRadius: 10,
+    fontSize: 14,
+    lineHeight: 1.2,
+  },
+
+  // ✅ NOVO: wrapper para dar “respiro” entre label e campo
+  field: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+  },
+
+  // ✅ NOVO: botão discreto (já existia, mantive)
   linkBtn: {
     border: "none",
     background: "transparent",
@@ -1138,14 +1193,8 @@ const styles = {
     alignItems: "flex-start",
     padding: "8vh 12px 12px",
   },
-  dialog: {
-    width: "100%",
-    maxWidth: 720,
-  },
-  dialogWide: {
-    width: "100%",
-    maxWidth: 1200,
-  },
+  dialog: { width: "100%", maxWidth: 720 },
+  dialogWide: { width: "100%", maxWidth: 1200 },
   content: {
     background: "#fff",
     borderRadius: 14,
