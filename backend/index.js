@@ -12508,10 +12508,11 @@ const { data: reservas, error: errR } = await supabase
         });
       }
 
-      // 4) Busca regras de horários/preços (agenda)
-const { data: regras, error: errA } = await supabase
+      // 4) Busca regras de horários/preços (agenda) — schema REAL:
+// regras_horarios: id_quadra, dia_da_semana, hora_inicio, hora_fim, valor
+const { data: regrasRaw, error: errA } = await supabase
   .from("regras_horarios")
-  .select("id, id_quadra, dia_semana, hora_inicio, hora_fim, preco_hora")
+  .select("id, id_quadra, dia_da_semana, hora_inicio, hora_fim, valor")
   .eq("id_quadra", quadraId);
 
 if (errA) {
@@ -12522,11 +12523,14 @@ if (errA) {
   });
 }
 
-// normaliza para o resto do código continuar usando quadra_id (sem mexer no restante)
-const regrasNorm = (regras || []).map((r) => ({
+// Normaliza para o resto do código continuar igual (sem refatorar tudo)
+const regras = (regrasRaw || []).map((r) => ({
   ...r,
-  quadra_id: r.id_quadra,
+  quadra_id: r.id_quadra,                 // alias
+  dia_semana: r.dia_da_semana,            // alias
+  preco_hora: r.valor,                    // alias
 }));
+
 
 
       // 5) Monta mapas rápidos
