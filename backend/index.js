@@ -12464,24 +12464,25 @@ app.get(
 
       // 2) Busca reservas do período (paid/pending bloqueiam, canceled não bloqueia)
       const { data: reservas, error: errR } = await supabase
-        .from("reservas")
-        .select(
-          `
-          id,
-          quadra_id,
-          data,
-          hora,
-          status,
-          origem,
-          cpf,
-          phone,
-          nome_cliente,
-          preco_total
-        `
-        )
-        .eq("quadra_id", quadraId)
-        .gte("data", dtInicioISO)
-        .lte("data", dtFimISO);
+  .from("reservas")
+  .select(
+    `
+    id,
+    quadra_id,
+    data,
+    hora,
+    status,
+    origem,
+    user_cpf,
+    phone,
+    nome_cliente,
+    preco_total
+  `
+  )
+  .eq("quadra_id", quadraId)
+  .gte("data", dtInicioISO)
+  .lte("data", dtFimISO);
+
 
       if (errR) {
         console.error("[ADMIN/RESERVAS/GRADE] Erro ao buscar reservas:", errR);
@@ -12609,7 +12610,7 @@ app.get(
                     id: reserva.id,
                     status: reserva.status,
                     origem: reserva.origem,
-                    cpf: reserva.cpf,
+                    cpf: reserva.user_cpf,
                     phone: reserva.phone,
                     nome_cliente: reserva.nome_cliente,
                     preco_total: reserva.preco_total,

@@ -1,18 +1,39 @@
+// ✅ SUBSTITUA O ARQUIVO INTEIRO
+// Arquivo: src/pages/admin/AdminReservasPage.jsx
+//
+// O que este arquivo faz:
+// - Mantém a tela principal 100% CLONE do Gestor (Cinema)
+// - Adiciona um botão discreto "Avançado" abaixo do botão Aplicar
+// - "Avançado" abre um MODAL (fecha clicando fora) com a TABELA GLOBAL
+// - Tabela global usa GET /admin/reservas (filtros avançados)
+// - Ações por linha: Editar / Cancelar (reaproveitando o modal existente)
+//
+// Endpoints usados:
+//   - GET  /admin/gestores-resumo
+//   - GET  /admin/empresas
+//   - GET  /admin/quadras
+//   - GET  /admin/reservas/grade
+//   - GET  /admin/reservas
+//   - POST /admin/reservas
+//   - PUT  /admin/reservas/:id
+//   - DELETE /admin/reservas/:id
+
 import React, { useEffect, useMemo, useState } from "react";
 import api from "../../services/api";
 
-// =====================================================
-// AdminReservasPage.jsx
-// - Visual idêntico ao Gestor (cinema) + visão global (filtros/listagem)
-// - Admin vê tudo e pode criar/editar/cancelar
-// - Reservas criadas no painel entram como PAID (padrão do projeto)
-// =====================================================
-
+// -------------------- utils --------------------
 const round2 = (v) => Math.round((Number(v || 0) + Number.EPSILON) * 100) / 100;
+
+function formatarDataBR(iso) {
+  if (!iso) return "—";
+  const s = String(iso).slice(0, 10); // YYYY-MM-DD
+  const [y, m, d] = s.split("-");
+  if (!y || !m || !d) return s;
+  return `${d}/${m}/${y}`;
+}
 
 function formatNomeQuadra(q) {
   if (!q) return "—";
-  // backend /admin/quadras já devolve nome_dinamico? (se não, cai no fallback)
   return (
     q.nome_dinamico ||
     q.nome ||
@@ -22,25 +43,50 @@ function formatNomeQuadra(q) {
   );
 }
 
-function statusLabel(s) {
-  const v = String(s || "").toLowerCase();
-  if (v === "paid") return { t: "PAGO", cls: "badge bg-success" };
-  if (v === "pending") return { t: "PENDENTE", cls: "badge bg-warning text-dark" };
-  if (v === "canceled") return { t: "CANCELADO", cls: "badge bg-secondary" };
-  return { t: (s || "—").toUpperCase(), cls: "badge bg-light text-dark" };
+function normalizarStatusSlot(slot) {
+  const raw = String(slot?.status || "").toLowerCase().trim();
+  if (raw === "reservado" || raw === "reservada") return "reservado";
+  if (raw === "bloqueado" || raw === "bloqueada") return "bloqueado";
+  if (raw === "disponivel" || raw === "disponível") return "disponivel";
+
+  // backend admin/grade tende a mandar "DISPONIVEL/RESERVADO/BLOQUEADO"
+  if (raw.includes("reserv")) return "reservado";
+  if (raw.includes("bloq")) return "bloqueado";
+  return "disponivel";
 }
 
-function origemLabel(o) {
-  const v = String(o || "").toLowerCase();
-  if (v === "whatsapp") return { t: "WHATSAPP/PIX", cls: "badge bg-info text-dark" };
-  if (v === "painel") return { t: "PAINEL", cls: "badge bg-dark" };
-  return { t: (o || "—").toUpperCase(), cls: "badge bg-light text-dark" };
+function corSlot(slot) {
+  const st = normalizarStatusSlot(slot);
+  if (st === "disponivel") return "#198754"; // verde
+  if (st === "reservado") return "#dc3545"; // vermelho
+  return "#6c757d"; // cinza
 }
 
-// =====================================================
-// MODAL: CRIAR RESERVA (ADMIN)
-// =====================================================
-function CriarReservaModal({ aberto, onFechar, quadraId, quadraNome, onCriada, dataSug, horaSug }) {
+function hojeISO() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function plusDiasISO(baseISO, dias) {
+  const d = new Date(baseISO ? `${String(baseISO).slice(0, 10)}T00:00:00` : Date.now());
+  d.setDate(d.getDate() + dias);
+  return d.toISOString().slice(0, 10);
+}
+
+function safeStr(v) {
+  return v == null ? "" : String(v);
+}
+
+// -------------------- MODAL: Criar Reserva --------------------
+function CriarReservaModal({
+  aberto,
+  onFechar,
+  quadraId,
+  quadraNome,
+  onCriada,
+  dataSug,
+  horaSug,
+  precoSug,
+}) {
   const [data, setData] = useState("");
   const [hora, setHora] = useState("");
   const [cpf, setCpf] = useState("");
@@ -48,16 +94,16 @@ function CriarReservaModal({ aberto, onFechar, quadraId, quadraNome, onCriada, d
   const [valor, setValor] = useState("");
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
-   
+
   useEffect(() => {
     if (!aberto) return;
     setErro("");
     setCpf("");
     setPhone("");
-    setValor("");
     if (dataSug) setData(String(dataSug).slice(0, 10));
     if (horaSug) setHora(String(horaSug).slice(0, 5));
-  }, [aberto, dataSug, horaSug]);
+    if (precoSug != null) setValor(String(precoSug));
+  }, [aberto, dataSug, horaSug, precoSug]);
 
   if (!aberto) return null;
 
@@ -65,6 +111,7 @@ function CriarReservaModal({ aberto, onFechar, quadraId, quadraNome, onCriada, d
     try {
       setSalvando(true);
       setErro("");
+
       if (!quadraId) return setErro("Selecione uma quadra.");
       if (!data || !hora) return setErro("Informe data e hora.");
 
@@ -78,32 +125,26 @@ function CriarReservaModal({ aberto, onFechar, quadraId, quadraNome, onCriada, d
       };
 
       await api.post("/admin/reservas", body);
+
       if (onCriada) onCriada();
       onFechar();
     } catch (e) {
-      const msg = e?.response?.data?.error || "Erro ao criar reserva.";
-      setErro(msg);
+      setErro(e?.response?.data?.error || "Erro ao criar reserva.");
     } finally {
       setSalvando(false);
     }
   };
 
   return (
-    <div className="modal fade show" style={styles.overlay}>
-      <div className="modal-dialog" style={styles.dialog}>
-        <div className="modal-content" style={styles.content}>
+    <div style={styles.overlay} onClick={onFechar}>
+      <div style={styles.dialog} onClick={(e) => e.stopPropagation()}>
+        <div style={styles.content}>
           <div style={styles.header}>
             <div>
-              <h5 style={styles.title}>Criar Reserva (Admin)</h5>
+              <h5 style={styles.title}>Criar reserva (Admin)</h5>
               {quadraNome && <div style={styles.subtitle}>{quadraNome}</div>}
             </div>
-            <button
-              type="button"
-              onClick={onFechar}
-              style={styles.btnX}
-              aria-label="Fechar"
-              title="Fechar"
-            >
+            <button type="button" onClick={onFechar} style={styles.btnX} aria-label="Fechar">
               &times;
             </button>
           </div>
@@ -112,18 +153,11 @@ function CriarReservaModal({ aberto, onFechar, quadraId, quadraNome, onCriada, d
             {erro && <div className="alert alert-danger">{erro}</div>}
 
             <div className="row g-3">
-              <div className="col-12">
-                <div style={styles.sectionTitle}>
-                  <span style={styles.sectionBar}></span>
-                  Data e Horário
-                </div>
-              </div>
-
               <div className="col-md-6">
                 <label style={styles.label}>Data</label>
                 <input
                   type="date"
-                  style={styles.input}
+                  className="form-control"
                   value={data}
                   onChange={(e) => setData(e.target.value)}
                 />
@@ -133,59 +167,43 @@ function CriarReservaModal({ aberto, onFechar, quadraId, quadraNome, onCriada, d
                 <label style={styles.label}>Hora</label>
                 <input
                   type="time"
-                  style={styles.input}
+                  className="form-control"
                   value={hora}
                   onChange={(e) => setHora(e.target.value)}
                 />
               </div>
 
-              <div className="col-12">
-                <div style={styles.sectionTitle}>
-                  <span style={styles.sectionBar}></span>
-                  Cliente (opcional)
-                </div>
-              </div>
-
               <div className="col-md-6">
-                <label style={styles.label}>CPF</label>
+                <label style={styles.label}>CPF (opcional)</label>
                 <input
-                  type="text"
-                  style={styles.input}
+                  className="form-control"
                   value={cpf}
                   onChange={(e) => setCpf(e.target.value)}
-                  placeholder="Somente números ou texto"
+                  placeholder="CPF"
                 />
               </div>
 
               <div className="col-md-6">
-                <label style={styles.label}>Telefone/WhatsApp</label>
+                <label style={styles.label}>Telefone (opcional)</label>
                 <input
-                  type="text"
-                  style={styles.input}
+                  className="form-control"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   placeholder="Ex: 21999999999"
                 />
               </div>
 
-              <div className="col-12">
-                <div style={styles.sectionTitle}>
-                  <span style={styles.sectionBar}></span>
-                  Valor (estatística)
-                </div>
-              </div>
-
               <div className="col-md-6">
-                <label style={styles.label}>Preço total</label>
+                <label style={styles.label}>Valor (estatística)</label>
                 <input
                   type="number"
-                  style={styles.input}
+                  className="form-control"
                   value={valor}
                   onChange={(e) => setValor(e.target.value)}
                   placeholder="0"
                 />
                 <div style={{ fontSize: 12, opacity: 0.75, marginTop: 6 }}>
-                  Reserva do painel **não gera financeiro/repasses** (é só estatística).
+                  Reserva do painel entra como <b>paid</b> e é só estatística.
                 </div>
               </div>
             </div>
@@ -205,10 +223,8 @@ function CriarReservaModal({ aberto, onFechar, quadraId, quadraNome, onCriada, d
   );
 }
 
-// =====================================================
-// MODAL: EDITAR / CANCELAR (ADMIN)
-// =====================================================
-function EditarReservaModal({ aberto, onFechar, reserva, onAtualizado, onCancelado }) {
+// -------------------- MODAL: Editar/Cancelar --------------------
+function EditarReservaModal({ aberto, onFechar, reserva, onAtualizado }) {
   const [data, setData] = useState("");
   const [hora, setHora] = useState("");
   const [cpf, setCpf] = useState("");
@@ -223,8 +239,11 @@ function EditarReservaModal({ aberto, onFechar, reserva, onAtualizado, onCancela
     setErro("");
     setData(String(reserva.data || "").slice(0, 10));
     setHora(String(reserva.hora || "").slice(0, 5));
-    setCpf(reserva.user_cpf || "");
+
+    // aceita ambos (grade pode vir cpf OU user_cpf dependendo do backend)
+    setCpf(reserva.cpf || reserva.user_cpf || reserva.user_cpf_top || reserva.user_cpf_list || "");
     setPhone(reserva.phone || "");
+
     setValor(reserva.preco_total != null ? String(reserva.preco_total) : "");
   }, [aberto, reserva]);
 
@@ -234,6 +253,7 @@ function EditarReservaModal({ aberto, onFechar, reserva, onAtualizado, onCancela
     try {
       setSalvando(true);
       setErro("");
+
       const body = {
         quadraId: reserva.quadra_id,
         data,
@@ -242,12 +262,13 @@ function EditarReservaModal({ aberto, onFechar, reserva, onAtualizado, onCancela
         phone,
         preco_total: valor !== "" ? Number(valor) : 0,
       };
+
       await api.put(`/admin/reservas/${reserva.id}`, body);
+
       if (onAtualizado) onAtualizado();
       onFechar();
     } catch (e) {
-      const msg = e?.response?.data?.error || "Erro ao salvar edição.";
-      setErro(msg);
+      setErro(e?.response?.data?.error || "Erro ao salvar edição.");
     } finally {
       setSalvando(false);
     }
@@ -259,31 +280,23 @@ function EditarReservaModal({ aberto, onFechar, reserva, onAtualizado, onCancela
       setCancelando(true);
       setErro("");
       await api.delete(`/admin/reservas/${reserva.id}`);
-      if (onCancelado) onCancelado();
+      if (onAtualizado) onAtualizado();
       onFechar();
     } catch (e) {
-      const msg = e?.response?.data?.error || "Erro ao cancelar reserva.";
-      setErro(msg);
+      setErro(e?.response?.data?.error || "Erro ao cancelar reserva.");
     } finally {
       setCancelando(false);
     }
   };
 
-  const qNome = formatNomeQuadra(reserva?.quadras);
-
   return (
-    <div className="modal fade show" style={styles.overlay}>
-      <div className="modal-dialog" style={styles.dialog}>
-        <div className="modal-content" style={styles.content}>
+    <div style={styles.overlay} onClick={onFechar}>
+      <div style={styles.dialog} onClick={(e) => e.stopPropagation()}>
+        <div style={styles.content}>
           <div style={styles.header}>
             <div>
-              <h5 style={styles.title}>Gerenciar Reserva (Admin)</h5>
-              <div style={styles.subtitle}>{qNome}</div>
-              <div style={{ marginTop: 6, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <span className={origemLabel(reserva.origem).cls}>{origemLabel(reserva.origem).t}</span>
-                <span className={statusLabel(reserva.status).cls}>{statusLabel(reserva.status).t}</span>
-                <span className="badge bg-light text-dark">ID: {reserva.id}</span>
-              </div>
+              <h5 style={styles.title}>Gerenciar reserva (Admin)</h5>
+              <div style={styles.subtitle}>ID: {reserva.id}</div>
             </div>
             <button type="button" onClick={onFechar} style={styles.btnX} aria-label="Fechar">
               &times;
@@ -294,50 +307,44 @@ function EditarReservaModal({ aberto, onFechar, reserva, onAtualizado, onCancela
             {erro && <div className="alert alert-danger">{erro}</div>}
 
             <div className="row g-3">
-              <div className="col-12">
-                <div style={styles.sectionTitle}>
-                  <span style={styles.sectionBar}></span>
-                  Data e Horário
-                </div>
-              </div>
-
               <div className="col-md-6">
                 <label style={styles.label}>Data</label>
-                <input type="date" style={styles.input} value={data} onChange={(e) => setData(e.target.value)} />
+                <input
+                  type="date"
+                  className="form-control"
+                  value={data}
+                  onChange={(e) => setData(e.target.value)}
+                />
               </div>
 
               <div className="col-md-6">
                 <label style={styles.label}>Hora</label>
-                <input type="time" style={styles.input} value={hora} onChange={(e) => setHora(e.target.value)} />
-              </div>
-
-              <div className="col-12">
-                <div style={styles.sectionTitle}>
-                  <span style={styles.sectionBar}></span>
-                  Cliente
-                </div>
+                <input
+                  type="time"
+                  className="form-control"
+                  value={hora}
+                  onChange={(e) => setHora(e.target.value)}
+                />
               </div>
 
               <div className="col-md-6">
                 <label style={styles.label}>CPF</label>
-                <input type="text" style={styles.input} value={cpf} onChange={(e) => setCpf(e.target.value)} />
+                <input className="form-control" value={cpf} onChange={(e) => setCpf(e.target.value)} />
               </div>
 
               <div className="col-md-6">
                 <label style={styles.label}>Telefone</label>
-                <input type="text" style={styles.input} value={phone} onChange={(e) => setPhone(e.target.value)} />
-              </div>
-
-              <div className="col-12">
-                <div style={styles.sectionTitle}>
-                  <span style={styles.sectionBar}></span>
-                  Valor (estatística)
-                </div>
+                <input className="form-control" value={phone} onChange={(e) => setPhone(e.target.value)} />
               </div>
 
               <div className="col-md-6">
-                <label style={styles.label}>Preço total</label>
-                <input type="number" style={styles.input} value={valor} onChange={(e) => setValor(e.target.value)} />
+                <label style={styles.label}>Valor (estatística)</label>
+                <input
+                  type="number"
+                  className="form-control"
+                  value={valor}
+                  onChange={(e) => setValor(e.target.value)}
+                />
               </div>
             </div>
           </div>
@@ -360,71 +367,404 @@ function EditarReservaModal({ aberto, onFechar, reserva, onAtualizado, onCancela
   );
 }
 
-// =====================================================
-// PÁGINA: ADMIN RESERVAS
-// =====================================================
-export default function AdminReservasPage() {
+// -------------------- MODAL: Avançado (Tabela Global) --------------------
+function AvancadoModal({
+  aberto,
+  onFechar,
+  gestores,
+  empresas,
+  quadras,
+  onEditarReserva, // callback(reservaPadronizada)
+}) {
+  const [inicio, setInicio] = useState(hojeISO());
+  const [fim, setFim] = useState(plusDiasISO(hojeISO(), 7));
+  const [status, setStatus] = useState("");
+  const [origem, setOrigem] = useState("");
+  const [gestorId, setGestorId] = useState("");
+  const [empresaId, setEmpresaId] = useState("");
+  const [quadraId, setQuadraId] = useState("");
+  const [cpf, setCpf] = useState("");
+  const [phone, setPhone] = useState("");
+
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState("");
-  const [msg, setMsg] = useState("");
+  const [itens, setItens] = useState([]);
 
-  // Base
+  // quando abre, não deixa lixo de erro antigo
+  useEffect(() => {
+    if (!aberto) return;
+    setErro("");
+  }, [aberto]);
+
+  const empresasFiltradas = useMemo(() => {
+    let list = empresas || [];
+    if (gestorId) list = list.filter((e) => String(e.gestor_id) === String(gestorId));
+    return list;
+  }, [empresas, gestorId]);
+
+  const quadrasFiltradas = useMemo(() => {
+    let list = quadras || [];
+    if (gestorId) list = list.filter((q) => String(q.gestor_id) === String(gestorId));
+    if (empresaId) list = list.filter((q) => String(q.empresa_id) === String(empresaId));
+    return list;
+  }, [quadras, gestorId, empresaId]);
+
+  useEffect(() => {
+    // ao trocar gestor/empresa, mantém coerência
+    setEmpresaId("");
+    setQuadraId("");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gestorId]);
+
+  useEffect(() => {
+    setQuadraId("");
+  }, [empresaId]);
+
+  if (!aberto) return null;
+
+  const buscar = async () => {
+    try {
+      setCarregando(true);
+      setErro("");
+
+      // regra de UX: evitar busca “sem filtro nenhum”
+      // (se você quiser remover isso, é só apagar o IF)
+      if (!inicio && !fim && !cpf && !phone && !quadraId && !empresaId && !gestorId) {
+        setErro("Use ao menos um filtro (ex.: período, CPF, telefone, empresa ou quadra).");
+        setItens([]);
+        return;
+      }
+
+      const r = await api.get("/admin/reservas", {
+        params: {
+          inicio: inicio || undefined,
+          fim: fim || undefined,
+          status: status || undefined,
+          origem: origem || undefined,
+          gestorId: gestorId || undefined,
+          empresaId: empresaId || undefined,
+          quadraId: quadraId || undefined,
+          cpf: cpf || undefined,
+          phone: phone || undefined,
+        },
+      });
+
+      const list = r.data?.itens || [];
+      setItens(list);
+      if (!list.length) setErro("Nenhuma reserva encontrada para os filtros selecionados.");
+    } catch (e) {
+      setErro(e?.response?.data?.error || "Erro ao buscar reservas (avançado).");
+      setItens([]);
+    } finally {
+      setCarregando(false);
+    }
+  };
+
+  const limpar = () => {
+    setInicio(hojeISO());
+    setFim(plusDiasISO(hojeISO(), 7));
+    setStatus("");
+    setOrigem("");
+    setGestorId("");
+    setEmpresaId("");
+    setQuadraId("");
+    setCpf("");
+    setPhone("");
+    setErro("");
+    setItens([]);
+  };
+
+  const mapLinhaParaReservaModal = (it) => {
+    // padroniza para o EditarReservaModal (admin)
+    return {
+      id: it.id,
+      quadra_id: it.quadra_id,
+      data: it.data,
+      hora: String(it.hora || "").slice(0, 5),
+      preco_total: it.preco_total,
+      phone: it.phone || "",
+      cpf: it.user_cpf || it.cpf || "",
+      user_cpf: it.user_cpf || "",
+      // extras (não atrapalham)
+      status: it.status,
+      origem: it.origem,
+    };
+  };
+
+  const nomeGestor = (id) => {
+    const g = (gestores || []).find((x) => String(x.id) === String(id));
+    return g ? g.nome : "—";
+  };
+
+  const nomeEmpresa = (it) => {
+    return it?.quadras?.empresas?.nome || "—";
+  };
+
+  const nomeQuadra = (it) => {
+    const q = it?.quadras;
+    if (!q) return "—";
+    return formatNomeQuadra(q);
+  };
+
+  return (
+    <div style={styles.overlay} onClick={onFechar}>
+      <div style={styles.dialogWide} onClick={(e) => e.stopPropagation()}>
+        <div style={styles.content}>
+          <div style={styles.header}>
+            <div>
+              <h5 style={styles.title}>Pesquisa avançada (Admin)</h5>
+              <div style={styles.subtitle}>
+                Tabela global de reservas (filtros + edição/cancelamento).
+              </div>
+            </div>
+            <button type="button" onClick={onFechar} style={styles.btnX} aria-label="Fechar">
+              &times;
+            </button>
+          </div>
+
+          <div style={styles.body}>
+            <div className="card" style={{ padding: 12 }}>
+              <div className="row g-3">
+                <div className="col-lg-3">
+                  <label style={styles.fLabel}>Início</label>
+                  <input className="form-control" type="date" value={inicio} onChange={(e) => setInicio(e.target.value)} />
+                </div>
+
+                <div className="col-lg-3">
+                  <label style={styles.fLabel}>Fim</label>
+                  <input className="form-control" type="date" value={fim} onChange={(e) => setFim(e.target.value)} />
+                </div>
+
+                <div className="col-lg-3">
+                  <label style={styles.fLabel}>Status</label>
+                  <select className="form-select" value={status} onChange={(e) => setStatus(e.target.value)}>
+                    <option value="">Todos</option>
+                    <option value="pending">pending</option>
+                    <option value="paid">paid</option>
+                    <option value="canceled">canceled</option>
+                  </select>
+                </div>
+
+                <div className="col-lg-3">
+                  <label style={styles.fLabel}>Origem</label>
+                  <select className="form-select" value={origem} onChange={(e) => setOrigem(e.target.value)}>
+                    <option value="">Todas</option>
+                    <option value="painel">painel</option>
+                    <option value="whatsapp">whatsapp</option>
+                  </select>
+                </div>
+
+                <div className="col-lg-4">
+                  <label style={styles.fLabel}>Gestor</label>
+                  <select className="form-select" value={gestorId} onChange={(e) => setGestorId(e.target.value)}>
+                    <option value="">Todos</option>
+                    {(gestores || []).map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.nome} ({g.email})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="col-lg-4">
+                  <label style={styles.fLabel}>Empresa</label>
+                  <select className="form-select" value={empresaId} onChange={(e) => setEmpresaId(e.target.value)}>
+                    <option value="">Todas</option>
+                    {(empresasFiltradas || []).map((e) => (
+                      <option key={e.id} value={e.id}>
+                        {e.nome}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="col-lg-4">
+                  <label style={styles.fLabel}>Quadra</label>
+                  <select className="form-select" value={quadraId} onChange={(e) => setQuadraId(e.target.value)}>
+                    <option value="">Todas</option>
+                    {(quadrasFiltradas || []).map((q) => (
+                      <option key={q.id} value={q.id}>
+                        {formatNomeQuadra(q)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="col-lg-3">
+                  <label style={styles.fLabel}>CPF</label>
+                  <input className="form-control" value={cpf} onChange={(e) => setCpf(e.target.value)} placeholder="Buscar por CPF" />
+                </div>
+
+                <div className="col-lg-3">
+                  <label style={styles.fLabel}>Telefone</label>
+                  <input
+                    className="form-control"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="Buscar por telefone"
+                  />
+                </div>
+
+                <div className="col-lg-6" style={{ display: "flex", justifyContent: "flex-end", gap: 10, alignItems: "end" }}>
+                  <button className="btn btn-outline-secondary" type="button" onClick={limpar} disabled={carregando}>
+                    Limpar
+                  </button>
+                  <button className="btn btn-primary" type="button" onClick={buscar} disabled={carregando}>
+                    {carregando ? "Buscando..." : "Buscar"}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {erro && (
+              <div className="alert alert-warning mt-3" style={{ marginBottom: 0 }}>
+                {erro}
+              </div>
+            )}
+
+            <div style={{ marginTop: 14 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+                <div style={{ fontWeight: 800 }}>Resultados</div>
+                <div style={{ fontSize: 12, opacity: 0.75 }}>
+                  {itens.length ? `${itens.length} item(ns)` : "—"}
+                </div>
+              </div>
+
+              <div
+                style={{
+                  marginTop: 10,
+                  border: "1px solid rgba(0,0,0,.08)",
+                  borderRadius: 10,
+                  overflow: "hidden",
+                }}
+              >
+                <div style={{ overflowX: "auto", maxHeight: "55vh" }}>
+                  <table className="table table-sm" style={{ margin: 0, minWidth: 1100 }}>
+                    <thead style={{ position: "sticky", top: 0, background: "#fff", zIndex: 1 }}>
+                      <tr>
+                        <th>Data</th>
+                        <th>Hora</th>
+                        <th>Status</th>
+                        <th>Origem</th>
+                        <th>Quadra</th>
+                        <th>Empresa</th>
+                        <th>Gestor</th>
+                        <th>CPF</th>
+                        <th>Telefone</th>
+                        <th>Valor</th>
+                        <th style={{ width: 180 }}>Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(itens || []).map((it) => {
+                        const gestorIdLinha = it?.quadras?.gestor_id || it?.quadras?.empresas?.gestor_id || "";
+                        return (
+                          <tr key={it.id}>
+                            <td>{formatarDataBR(it.data)}</td>
+                            <td>{safeStr(it.hora).slice(0, 5)}</td>
+                            <td>{safeStr(it.status)}</td>
+                            <td>{safeStr(it.origem)}</td>
+                            <td>{nomeQuadra(it)}</td>
+                            <td>{nomeEmpresa(it)}</td>
+                            <td>{nomeGestor(gestorIdLinha)}</td>
+                            <td>{safeStr(it.user_cpf || it.cpf || "")}</td>
+                            <td>{safeStr(it.phone || "")}</td>
+                            <td>R$ {round2(it.preco_total).toFixed(2)}</td>
+                            <td>
+                              <div style={{ display: "flex", gap: 8 }}>
+                                <button
+                                  className="btn btn-outline-primary btn-sm"
+                                  type="button"
+                                  onClick={() => onEditarReserva(mapLinhaParaReservaModal(it))}
+                                >
+                                  Editar
+                                </button>
+                                <button
+                                  className="btn btn-outline-danger btn-sm"
+                                  type="button"
+                                  onClick={() => onEditarReserva(mapLinhaParaReservaModal(it)) /* modal tem botão cancelar */}
+                                >
+                                  Cancelar
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+
+                      {!itens.length && (
+                        <tr>
+                          <td colSpan={11} style={{ textAlign: "center", padding: 18, opacity: 0.7 }}>
+                            Nenhum resultado.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div style={{ fontSize: 12, opacity: 0.7, marginTop: 10 }}>
+                Dica: use período + CPF/telefone para achar rápido. Ações por linha abrem o modal de edição/cancelamento.
+              </div>
+            </div>
+          </div>
+
+          <div style={styles.footer}>
+            <button className="btn btn-outline-secondary" onClick={onFechar}>
+              Fechar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// -------------------- PAGE: Admin Reservas (cinema clone + avançado) --------------------
+export default function AdminReservasPage() {
+  // bases
+  const [carregandoBases, setCarregandoBases] = useState(false);
+  const [erroBases, setErroBases] = useState("");
+
   const [gestores, setGestores] = useState([]);
   const [empresas, setEmpresas] = useState([]);
   const [quadras, setQuadras] = useState([]);
 
-  // Filtros globais
+  // filtros (cinema)
   const [gestorId, setGestorId] = useState("");
   const [empresaId, setEmpresaId] = useState("");
   const [quadraId, setQuadraId] = useState("");
 
-  const [status, setStatus] = useState("todas");
-  const [origem, setOrigem] = useState("todas");
-  const [inicio, setInicio] = useState("");
-  const [fim, setFim] = useState("");
-  const [cpf, setCpf] = useState("");
-  const [phone, setPhone] = useState("");
+  const [cinemaInicio, setCinemaInicio] = useState(() => hojeISO());
+  const [cinemaFim, setCinemaFim] = useState(() => plusDiasISO(hojeISO(), 6));
+  const [cinemaFiltro, setCinemaFiltro] = useState("todas");
 
-  // Dados listagem
-  const [itens, setItens] = useState([]);
+  // grade
+  const [carregandoGrade, setCarregandoGrade] = useState(false);
+  const [erroGrade, setErroGrade] = useState("");
+  const [mensagemInfo, setMensagemInfo] = useState("");
+  const [grade, setGrade] = useState([]);
 
-  // Modais
-  const [modalCriar, setModalCriar] = useState(false);
-  const [modalEditar, setModalEditar] = useState(false);
-  const [reservaSel, setReservaSel] = useState(null);
-    // ==========================
-  // CINEMA (grade)
-  // ==========================
-  const [modo, setModo] = useState("cinema"); // "cinema" | "global"
+  // modais
+  const [modalCriarAberto, setModalCriarAberto] = useState(false);
+  const [modalEditarAberto, setModalEditarAberto] = useState(false);
+  const [modalAvancadoAberto, setModalAvancadoAberto] = useState(false);
 
-  const [cinemaInicio, setCinemaInicio] = useState(() => {
-    const d = new Date();
-    return d.toISOString().slice(0, 10);
-  });
+  const [slotSelecionado, setSlotSelecionado] = useState(null);
+  const [reservaSelecionada, setReservaSelecionada] = useState(null);
 
-  const [cinemaFim, setCinemaFim] = useState(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 6);
-    return d.toISOString().slice(0, 10);
-  });
-
-  const [cinemaFiltro, setCinemaFiltro] = useState("todas"); // todas|disponivel|reservada|bloqueado
-  const [cinemaGrade, setCinemaGrade] = useState([]); // [{data, slots:[]}]
-  const [slotSelecionado, setSlotSelecionado] = useState(null); // slot clicado
-
-  
-  const empresasCinema = useMemo(() => empresas || [], [empresas]);
-
-const empresasGlobal = useMemo(() => {
-  if (!gestorId) return empresas || [];
-  return (empresas || []).filter((e) => String(e.gestor_id) === String(gestorId));
-}, [empresas, gestorId]);
+  const empresasFiltradas = useMemo(() => {
+    let list = empresas || [];
+    if (gestorId) list = list.filter((e) => String(e.gestor_id) === String(gestorId));
+    return list;
+  }, [empresas, gestorId]);
 
   const quadrasFiltradas = useMemo(() => {
-    let q = quadras || [];
-    if (gestorId) q = q.filter((x) => String(x.gestor_id) === String(gestorId));
-    if (empresaId) q = q.filter((x) => String(x.empresa_id) === String(empresaId));
-    return q;
+    let list = quadras || [];
+    if (gestorId) list = list.filter((q) => String(q.gestor_id) === String(gestorId));
+    if (empresaId) list = list.filter((q) => String(q.empresa_id) === String(empresaId));
+    return list;
   }, [quadras, gestorId, empresaId]);
 
   const quadraSelecionada = useMemo(() => {
@@ -435,9 +775,8 @@ const empresasGlobal = useMemo(() => {
 
   async function carregarBases() {
     try {
-      setCarregando(true);
-      setErro("");
-      setMsg("");
+      setCarregandoBases(true);
+      setErroBases("");
 
       const [rGest, rEmp, rQua] = await Promise.all([
         api.get("/admin/gestores-resumo"),
@@ -448,25 +787,25 @@ const empresasGlobal = useMemo(() => {
       setGestores(rGest.data || []);
       setEmpresas(rEmp.data || []);
 
-      // /admin/quadras retorna { quadras: [...] }
       const qPayload = rQua.data?.quadras || rQua.data || [];
       setQuadras(qPayload);
-
     } catch (e) {
       console.error("[ADMIN/RESERVAS] Erro ao carregar bases:", e);
-      setErro(e?.response?.data?.error || "Erro ao carregar bases (gestores/empresas/quadras).");
+      setErroBases(e?.response?.data?.error || "Erro ao carregar bases (gestores/empresas/quadras).");
     } finally {
-      setCarregando(false);
+      setCarregandoBases(false);
     }
   }
-  async function buscarGradeCinema() {
+
+  async function aplicarCinema() {
     try {
-      setCarregando(true);
-      setErro("");
-      setMsg("");
+      setCarregandoGrade(true);
+      setErroGrade("");
+      setMensagemInfo("");
 
       if (!quadraId) {
-        setErro("Selecione uma quadra para visualizar a grade (cinema).");
+        setErroGrade("Selecione uma quadra para visualizar a grade.");
+        setGrade([]);
         return;
       }
 
@@ -479,82 +818,158 @@ const empresasGlobal = useMemo(() => {
         },
       });
 
-      setCinemaGrade(r.data?.grade || []);
-      setModo("cinema");
+      const g = r.data?.grade || [];
+      setGrade(g);
+
+      if (!g.length) {
+        setMensagemInfo("Nenhum horário encontrado para o período selecionado.");
+      }
     } catch (e) {
       console.error("[ADMIN/RESERVAS][CINEMA] Erro ao buscar grade:", e);
-      setErro(e?.response?.data?.error || "Erro ao buscar grade (cinema).");
+      setErroGrade(e?.response?.data?.error || "Erro ao buscar grade (cinema).");
+      setGrade([]);
     } finally {
-      setCarregando(false);
-    }
-  }
-
-  async function buscarReservas() {
-    try {
-      setCarregando(true);
-      setErro("");
-      setMsg("");
-
-      const params = {};
-      if (inicio) params.inicio = inicio;
-      if (fim) params.fim = fim;
-      if (status && status !== "todas") params.status = status;
-      if (origem && origem !== "todas") params.origem = origem;
-      if (gestorId) params.gestorId = gestorId;
-      if (empresaId) params.empresaId = empresaId;
-      if (quadraId) params.quadraId = quadraId;
-      if (cpf) params.cpf = cpf;
-      if (phone) params.phone = phone;
-
-      const r = await api.get("/admin/reservas", { params });
-      setItens(r.data?.itens || []);
-    } catch (e) {
-      console.error("[ADMIN/RESERVAS] Erro ao buscar reservas:", e);
-      setErro(e?.response?.data?.error || "Erro ao listar reservas.");
-    } finally {
-      setCarregando(false);
+      setCarregandoGrade(false);
     }
   }
 
   useEffect(() => {
     carregarBases();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Quando muda gestor/empresa, limpa quadra automaticamente (evita inconsistência)
- useEffect(() => {
-  // Cinema: ao trocar empresa, limpa quadra (pra não ficar inconsistente)
-  if (modo === "cinema") {
+  // ao trocar gestor/empresa, limpa quadra + grade
+  useEffect(() => {
     setQuadraId("");
-    setCinemaGrade([]);
-    setSlotSelecionado(null); // opcional: limpa a grade na troca
-  }
+    setGrade([]);
+    setMensagemInfo("");
+    setErroGrade("");
+    setSlotSelecionado(null);
+    setReservaSelecionada(null);
+  }, [gestorId, empresaId]);
 
-  // Global: se trocar gestor/empresa, limpa quadra também
-  if (modo === "global") {
-    setQuadraId("");
-  }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [empresaId, gestorId, modo]);
-
-
-
-  const abrirEditar = (r) => {
-    setReservaSel(r);
-    setModalEditar(true);
+  const abrirModalCriar = (dia, slot) => {
+    setSlotSelecionado({
+      data: dia.data,
+      hora: slot.hora,
+      preco_hora: slot.preco_hora,
+    });
+    setModalCriarAberto(true);
   };
 
-  const limparFiltros = () => {
-    setStatus("todas");
-    setOrigem("todas");
-    setInicio("");
-    setFim("");
-    setCpf("");
-    setPhone("");
-    setGestorId("");
-    setEmpresaId("");
-    setQuadraId("");
-    setItens([]);
+  const abrirModalEditarFromSlot = (slot) => {
+    if (!slot?.reserva?.id) return;
+    setReservaSelecionada({
+      id: slot.reserva.id,
+      quadra_id: quadraId,
+      data: slot.data,
+      hora: slot.hora,
+      preco_total: slot.reserva.preco_total,
+      phone: slot.reserva.phone,
+      // grade pode vir cpf ou user_cpf dependendo do backend
+      cpf: slot.reserva.cpf || slot.reserva.user_cpf || "",
+      user_cpf: slot.reserva.user_cpf || "",
+      status: slot.reserva.status,
+      origem: slot.reserva.origem,
+    });
+    setModalEditarAberto(true);
+  };
+
+  const abrirModalEditarFromTabela = (reservaPadronizada) => {
+    setReservaSelecionada(reservaPadronizada);
+    setModalEditarAberto(true);
+  };
+
+  const renderCinema = () => {
+    if (!quadraId) {
+      return (
+        <p className="text-muted mt-3">
+          Selecione um gestor (opcional), uma empresa e uma quadra para visualizar a agenda.
+        </p>
+      );
+    }
+
+    if (carregandoGrade) return <p className="mt-3">Carregando horários...</p>;
+
+    if (erroGrade) {
+      return (
+        <p className="mt-3 text-danger" style={{ fontWeight: 600 }}>
+          {erroGrade}
+        </p>
+      );
+    }
+
+    if (mensagemInfo) {
+      return (
+        <p className="mt-3 text-muted" style={{ fontStyle: "italic" }}>
+          {mensagemInfo}
+        </p>
+      );
+    }
+
+    if (!grade || !grade.length) return null;
+
+    return (
+      <div className="mt-4">
+        <h5 className="mb-3">Agenda estilo cinema</h5>
+
+        <div
+          style={{
+            borderRadius: "8px",
+            border: "1px solid #dee2e6",
+            padding: "16px",
+            backgroundColor: "#f8f9fa",
+          }}
+        >
+          {grade.map((dia) => (
+            <div key={dia.data} className="mb-4">
+              <div style={{ fontWeight: 600, marginBottom: "8px", fontSize: "0.95rem" }}>
+                {formatarDataBR(dia.data)}
+              </div>
+
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                {dia.slots && dia.slots.length ? (
+                  dia.slots.map((slot) => {
+                    const statusNorm = normalizarStatusSlot(slot);
+
+                    return (
+                      <div
+                        key={`${dia.data}-${slot.hora}`}
+                        style={{
+                          minWidth: "92px",
+                          textAlign: "center",
+                          padding: "6px 8px",
+                          borderRadius: "4px",
+                          backgroundColor: corSlot(slot),
+                          color: "#fff",
+                          fontSize: "0.85rem",
+                          cursor: statusNorm === "bloqueado" ? "not-allowed" : "pointer",
+                          opacity: statusNorm === "bloqueado" ? 0.7 : 1,
+                        }}
+                        title={String(slot.status || "").toUpperCase()}
+                        onClick={() => {
+                          if (statusNorm === "bloqueado") return;
+                          if (statusNorm === "disponivel") return abrirModalCriar(dia, slot);
+                          return abrirModalEditarFromSlot({ ...slot, data: dia.data });
+                        }}
+                      >
+                        <div style={{ fontWeight: 700 }}>{String(slot.hora || "").slice(0, 5)}</div>
+                        <div style={{ fontSize: 11, opacity: 0.95, marginTop: 2 }}>
+                          {statusNorm === "disponivel" && `R$ ${round2(slot.preco_hora).toFixed(2)}`}
+                          {statusNorm === "reservado" && `R$ ${round2(slot?.reserva?.preco_total).toFixed(2)}`}
+                          {statusNorm === "bloqueado" && "BLOQ"}
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="text-muted">Nenhum horário disponível para este dia.</div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -563,191 +978,32 @@ const empresasGlobal = useMemo(() => {
         <div>
           <h1 className="page-title">Reservas (Admin)</h1>
           <p style={{ marginTop: 6, color: "#666", fontSize: 13 }}>
-            Visão global (filtros) + ações administrativas (criar/editar/cancelar).
+            Tela principal é o clone do Gestor (Cinema). Use “Avançado” para pesquisa global em tabela.
           </p>
         </div>
 
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <button className="btn btn-outline-secondary" onClick={carregarBases} disabled={carregando}>
-            Recarregar bases
+          <button className="btn btn-outline-secondary" onClick={carregarBases} disabled={carregandoBases}>
+            {carregandoBases ? "Recarregando..." : "Recarregar bases"}
           </button>
-          {modo === "cinema" && (
-  <button
-    className="btn btn-success"
-    onClick={() => {
-      setSlotSelecionado(null);
-      setModalCriar(true);
-    }}
-    disabled={!quadraId}
-    title={!quadraId ? "Selecione uma quadra para criar reserva" : "Criar reserva"}
-  >
-    + Criar reserva (painel)
-  </button>
-)}
-
-        </div>
-      </div>
-
-      {erro && <div className="alert alert-danger">{erro}</div>}
-      {msg && <div className="alert alert-success">{msg}</div>}
-
-            {/* ==========================
-          MODO (Cinema x Global)
-         ========================== */}
-      <div className="card" style={{ padding: 14, marginBottom: 14 }}>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
           <button
-            className={`btn ${modo === "cinema" ? "btn-dark" : "btn-outline-dark"}`}
-            onClick={() => setModo("cinema")}
-            type="button"
+            className="btn btn-success"
+            onClick={() => setModalCriarAberto(true)}
+            disabled={!quadraId}
+            title={!quadraId ? "Selecione uma quadra para criar reserva" : "Criar reserva"}
           >
-            Cinema (empresa → quadra → grade)
-          </button>
-
-          <button
-            className={`btn ${modo === "global" ? "btn-dark" : "btn-outline-dark"}`}
-            onClick={() => setModo("global")}
-            type="button"
-          >
-            Visão global (filtros + listagem)
+            + Criar reserva (painel)
           </button>
         </div>
       </div>
 
-      {/* ==========================
-          CINEMA
-         ========================== */}
-      {modo === "cinema" && (
-        <>
-          <div className="card" style={{ padding: 14, marginBottom: 14 }}>
-            <div className="row g-3">
-              <div className="col-lg-4">
-                <label style={styles.fLabel}>Empresa/Complexo</label>
-                <select className="form-select" value={empresaId} onChange={(e) => setEmpresaId(e.target.value)}>
-                  <option value="">Selecione...</option>
-                  {(empresasCinema || []).map((e) => (
+      {erroBases && <div className="alert alert-danger">{erroBases}</div>}
 
-                    <option key={e.id} value={e.id}>{e.nome}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="col-lg-4">
-                <label style={styles.fLabel}>Quadra</label>
-                <select className="form-select" value={quadraId} onChange={(e) => setQuadraId(e.target.value)}>
-                  <option value="">Selecione...</option>
-                  {(quadrasFiltradas || []).map((q) => (
-                    <option key={q.id} value={q.id}>{formatNomeQuadra(q)}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="col-lg-2">
-                <label style={styles.fLabel}>Início</label>
-                <input className="form-control" type="date" value={cinemaInicio} onChange={(e) => setCinemaInicio(e.target.value)} />
-              </div>
-
-              <div className="col-lg-2">
-                <label style={styles.fLabel}>Fim</label>
-                <input className="form-control" type="date" value={cinemaFim} onChange={(e) => setCinemaFim(e.target.value)} />
-              </div>
-
-              <div className="col-lg-3">
-                <label style={styles.fLabel}>Filtro</label>
-                <select className="form-select" value={cinemaFiltro} onChange={(e) => setCinemaFiltro(e.target.value)}>
-                  <option value="todas">Todas</option>
-                  <option value="disponivel">Disponível</option>
-                  <option value="reservada">Reservada</option>
-                  <option value="bloqueado">Bloqueado</option>
-                </select>
-              </div>
-
-              <div className="col-12" style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
-                <button className="btn btn-primary" type="button" onClick={buscarGradeCinema} disabled={carregando || !quadraId}>
-                  {carregando ? "Carregando..." : "Aplicar (Cinema)"}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div className="card" style={{ padding: 14 }}>
-            {!quadraId ? (
-              <div style={{ padding: 14, color: "#666" }}>Selecione uma quadra para ver a grade.</div>
-            ) : (
-              (cinemaGrade || []).map((dia) => (
-                <div key={dia.data} style={{ padding: "12px 0", borderBottom: "1px solid rgba(0,0,0,.06)" }}>
-                  <div style={{ fontWeight: 900, marginBottom: 10 }}>
-                    {String(dia.data || "").slice(0, 10)}
-                  </div>
-
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 10 }}>
-                    {(dia.slots || []).map((s) => {
-                      const st = String(s.status || "").toUpperCase();
-                      const isLivre = st === "DISPONIVEL";
-                      const isRes = st === "RESERVADO";
-
-                      const bg =
-                        isLivre ? "#eafff2" : isRes ? "#fff7e6" : "#ffecec";
-                      const bd =
-                        isLivre ? "1px solid #b7f0cf" : isRes ? "1px solid #ffd9a8" : "1px solid #ffc1c1";
-
-                      return (
-                        <button
-                          key={`${s.data}-${s.hora}`}
-                          type="button"
-                          onClick={() => {
-                            if (isLivre) {
-                              setSlotSelecionado(s);
-                              setModalCriar(true);
-                            } else if (isRes && s.reserva?.id) {
-                              // abre seu modal editar usando um “reservaSel” compatível
-                              setReservaSel({
-                                ...s.reserva,
-                                quadra_id: quadraId,
-                                data: s.data,
-                                hora: s.hora,
-                                // tenta manter compatibilidade com seu modal que usa quadras/empresas:
-                                quadras: quadraSelecionada ? { ...quadraSelecionada, empresas: (empresas || []).find(e => String(e.id) === String(quadraSelecionada.empresa_id)) } : null,
-                              });
-                              setModalEditar(true);
-                            } else {
-                              setMsg("Horário BLOQUEADO.");
-                              setTimeout(() => setMsg(""), 2000);
-                            }
-                          }}
-                          style={{
-                            textAlign: "left",
-                            borderRadius: 12,
-                            padding: 10,
-                            background: bg,
-                            border: bd,
-                            cursor: "pointer",
-                          }}
-                          title={st}
-                        >
-                          <div style={{ fontWeight: 900 }}>{String(s.hora || "").slice(0, 5)}</div>
-                          <div style={{ marginTop: 4, fontSize: 12, opacity: 0.85 }}>{st}</div>
-                          <div style={{ marginTop: 6, fontSize: 12, opacity: 0.9 }}>
-                            {isLivre ? `Preço: R$ ${round2(s.preco_hora).toFixed(2)}` : ""}
-                            {isRes && s.reserva ? `Valor: R$ ${round2(s.reserva.preco_total).toFixed(2)}` : ""}
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </>
-      )}
-      {modo === "global" && (
-      <>
-      {/* FILTROS */}
-      <div className="card" style={{ padding: 14, marginBottom: 14 }}>
+      {/* FILTROS (Cinema) */}
+      <div className="card" style={{ padding: 14 }}>
         <div className="row g-3">
-          <div className="col-lg-3">
-            <label style={styles.fLabel}>Gestor</label>
+          <div className="col-lg-4">
+            <label style={styles.fLabel}>Gestor (opcional)</label>
             <select className="form-select" value={gestorId} onChange={(e) => setGestorId(e.target.value)}>
               <option value="">Todos</option>
               {(gestores || []).map((g) => (
@@ -758,12 +1014,11 @@ const empresasGlobal = useMemo(() => {
             </select>
           </div>
 
-          <div className="col-lg-3">
+          <div className="col-lg-4">
             <label style={styles.fLabel}>Empresa/Complexo</label>
             <select className="form-select" value={empresaId} onChange={(e) => setEmpresaId(e.target.value)}>
-              <option value="">Todas</option>
-              {(empresasGlobal || []).map((e) => (
-
+              <option value="">Selecione...</option>
+              {(empresasFiltradas || []).map((e) => (
                 <option key={e.id} value={e.id}>
                   {e.nome}
                 </option>
@@ -771,10 +1026,10 @@ const empresasGlobal = useMemo(() => {
             </select>
           </div>
 
-          <div className="col-lg-3">
+          <div className="col-lg-4">
             <label style={styles.fLabel}>Quadra</label>
             <select className="form-select" value={quadraId} onChange={(e) => setQuadraId(e.target.value)}>
-              <option value="">Todas</option>
+              <option value="">Selecione...</option>
               {(quadrasFiltradas || []).map((q) => (
                 <option key={q.id} value={q.id}>
                   {formatNomeQuadra(q)}
@@ -784,170 +1039,119 @@ const empresasGlobal = useMemo(() => {
           </div>
 
           <div className="col-lg-3">
-            <label style={styles.fLabel}>Status</label>
-            <select className="form-select" value={status} onChange={(e) => setStatus(e.target.value)}>
-              <option value="todas">Todos</option>
-              <option value="pending">Pendente</option>
-              <option value="paid">Pago</option>
-              <option value="canceled">Cancelado</option>
-            </select>
-          </div>
-
-          <div className="col-lg-3">
-            <label style={styles.fLabel}>Origem</label>
-            <select className="form-select" value={origem} onChange={(e) => setOrigem(e.target.value)}>
-              <option value="todas">Todas</option>
-              <option value="painel">Painel</option>
-              <option value="whatsapp">WhatsApp/PIX</option>
-            </select>
-          </div>
-
-          <div className="col-lg-3">
             <label style={styles.fLabel}>Início</label>
-            <input className="form-control" type="date" value={inicio} onChange={(e) => setInicio(e.target.value)} />
+            <input className="form-control" type="date" value={cinemaInicio} onChange={(e) => setCinemaInicio(e.target.value)} />
           </div>
 
           <div className="col-lg-3">
             <label style={styles.fLabel}>Fim</label>
-            <input className="form-control" type="date" value={fim} onChange={(e) => setFim(e.target.value)} />
+            <input className="form-control" type="date" value={cinemaFim} onChange={(e) => setCinemaFim(e.target.value)} />
           </div>
 
           <div className="col-lg-3">
-            <label style={styles.fLabel}>CPF</label>
-            <input className="form-control" value={cpf} onChange={(e) => setCpf(e.target.value)} placeholder="Filtrar CPF" />
+            <label style={styles.fLabel}>Filtro</label>
+            <select className="form-select" value={cinemaFiltro} onChange={(e) => setCinemaFiltro(e.target.value)}>
+              <option value="todas">Todas</option>
+              <option value="disponivel">Disponível</option>
+              <option value="reservada">Reservada</option>
+              <option value="bloqueado">Bloqueado</option>
+            </select>
           </div>
 
-          <div className="col-lg-3">
-            <label style={styles.fLabel}>Telefone</label>
-            <input
-              className="form-control"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="Filtrar telefone"
-            />
-          </div>
-
-          <div className="col-12" style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
-            <button className="btn btn-outline-secondary" type="button" onClick={limparFiltros} disabled={carregando}>
-              Limpar
+          <div className="col-lg-3" style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", justifyContent: "end", gap: 6 }}>
+            <button className="btn btn-primary" type="button" onClick={aplicarCinema} disabled={carregandoGrade}>
+              {carregandoGrade ? "Aplicando..." : "Aplicar"}
             </button>
-            <button className="btn btn-primary" type="button" onClick={buscarReservas} disabled={carregando}>
-              {carregando ? "Buscando..." : "Aplicar filtros"}
+
+            {/* ✅ botão discreto (não bagunça a UI) */}
+            <button
+              type="button"
+              onClick={() => setModalAvancadoAberto(true)}
+              style={styles.linkBtn}
+              title="Abrir pesquisa avançada (tabela global)"
+            >
+              Avançado
             </button>
           </div>
         </div>
       </div>
 
-      {/* LISTAGEM */}
-      <div className="card" style={{ padding: 14 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <div style={{ fontWeight: 800 }}>Listagem (visão global)</div>
-          <div style={{ fontSize: 12, opacity: 0.75 }}>
-            {itens.length} item(ns) • reservas do painel entram como <b>paid</b> e não geram repasse/financeiro.
-          </div>
-        </div>
+      {/* CINEMA */}
+      {renderCinema()}
 
-        <div style={{ marginTop: 12, overflowX: "auto" }}>
-          <table className="table table-sm align-middle">
-            <thead>
-              <tr>
-                <th>Data</th>
-                <th>Hora</th>
-                <th>Quadra</th>
-                <th>Empresa</th>
-                <th>Gestor</th>
-                <th>Origem</th>
-                <th>Status</th>
-                <th style={{ textAlign: "right" }}>Valor</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {itens.map((r) => {
-                const emp = r?.quadras?.empresas;
-                const gId = r?.quadras?.gestor_id;
-                const g = (gestores || []).find((x) => String(x.id) === String(gId));
-                return (
-                  <tr key={r.id}>
-                    <td>{String(r.data || "").slice(0, 10)}</td>
-                    <td>{String(r.hora || "").slice(0, 5)}</td>
-                    <td>{formatNomeQuadra(r.quadras)}</td>
-                    <td>{emp?.nome || "—"}</td>
-                    <td>{g?.nome || gId || "—"}</td>
-                    <td>
-                      <span className={origemLabel(r.origem).cls}>{origemLabel(r.origem).t}</span>
-                    </td>
-                    <td>
-                      <span className={statusLabel(r.status).cls}>{statusLabel(r.status).t}</span>
-                    </td>
-                    <td style={{ textAlign: "right" }}>R$ {round2(r.preco_total).toFixed(2)}</td>
-                    <td style={{ textAlign: "right" }}>
-                      <button className="btn btn-sm btn-outline-primary" onClick={() => abrirEditar(r)}>
-                        Gerenciar
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-              {!itens.length && (
-                <tr>
-                  <td colSpan={9} style={{ padding: 14, color: "#666" }}>
-                    Nenhuma reserva encontrada. Use os filtros e clique em <b>Aplicar filtros</b>.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-       </>
-)}
       {/* MODAIS */}
-            <CriarReservaModal
-        aberto={modalCriar}
-        onFechar={() => setModalCriar(false)}
+      <CriarReservaModal
+        aberto={modalCriarAberto}
+        onFechar={() => setModalCriarAberto(false)}
         quadraId={quadraId}
         quadraNome={quadraNome}
-        onCriada={() => {
-          // atualiza o que estiver aberto
-          if (modo === "cinema") buscarGradeCinema();
-          else buscarReservas();
-        }}
         dataSug={slotSelecionado?.data || ""}
         horaSug={slotSelecionado?.hora || ""}
+        precoSug={slotSelecionado?.preco_hora ?? ""}
+        onCriada={aplicarCinema}
       />
 
-
-            <EditarReservaModal
-        aberto={modalEditar}
-        onFechar={() => setModalEditar(false)}
-        reserva={reservaSel}
-        onAtualizado={() => (modo === "cinema" ? buscarGradeCinema() : buscarReservas())}
-        onCancelado={() => (modo === "cinema" ? buscarGradeCinema() : buscarReservas())}
+      <EditarReservaModal
+        aberto={modalEditarAberto}
+        onFechar={() => setModalEditarAberto(false)}
+        reserva={reservaSelecionada}
+        onAtualizado={() => {
+          // atualiza grade (se estiver usando cinema)
+          aplicarCinema();
+        }}
       />
 
+      <AvancadoModal
+        aberto={modalAvancadoAberto}
+        onFechar={() => setModalAvancadoAberto(false)}
+        gestores={gestores}
+        empresas={empresas}
+        quadras={quadras}
+        onEditarReserva={abrirModalEditarFromTabela}
+      />
     </div>
   );
 }
 
-// =====================================================
-// Estilos (mantém “cara” próxima do Gestor)
-// =====================================================
+// -------------------- estilos --------------------
 const styles = {
   fLabel: { fontSize: 12, fontWeight: 800, marginBottom: 6, color: "#374151" },
 
+  linkBtn: {
+    border: "none",
+    background: "transparent",
+    padding: 0,
+    fontSize: 12,
+    fontWeight: 800,
+    color: "#0d6efd",
+    cursor: "pointer",
+    textDecoration: "underline",
+  },
+
   overlay: {
-    display: "block",
+    position: "fixed",
+    inset: 0,
     background: "rgba(0,0,0,.55)",
+    zIndex: 2000,
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "flex-start",
+    padding: "8vh 12px 12px",
   },
   dialog: {
+    width: "100%",
     maxWidth: 720,
-    margin: "8vh auto",
+  },
+  dialogWide: {
+    width: "100%",
+    maxWidth: 1200,
   },
   content: {
+    background: "#fff",
     borderRadius: 14,
     overflow: "hidden",
     border: "1px solid rgba(0,0,0,.08)",
+    boxShadow: "0 20px 60px rgba(0,0,0,.25)",
   },
   header: {
     padding: "14px 16px",
@@ -974,27 +1178,7 @@ const styles = {
     display: "flex",
     gap: 10,
     alignItems: "center",
-  },
-  sectionTitle: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    fontWeight: 900,
-    color: "#111827",
-  },
-  sectionBar: {
-    width: 10,
-    height: 10,
-    borderRadius: 99,
-    background: "#16a34a",
-    display: "inline-block",
+    justifyContent: "flex-end",
   },
   label: { fontSize: 12, fontWeight: 800, marginBottom: 6, color: "#374151" },
-  input: {
-    width: "100%",
-    padding: "10px 12px",
-    borderRadius: 10,
-    border: "1px solid rgba(0,0,0,.15)",
-    outline: "none",
-  },
 };
