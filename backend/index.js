@@ -12509,18 +12509,25 @@ const { data: reservas, error: errR } = await supabase
       }
 
       // 4) Busca regras de horários/preços (agenda)
-      const { data: regras, error: errA } = await supabase
-        .from("regras_horarios")
-        .select("id, quadra_id, dia_semana, hora_inicio, hora_fim, preco_hora")
-        .eq("quadra_id", quadraId);
+const { data: regras, error: errA } = await supabase
+  .from("regras_horarios")
+  .select("id, id_quadra, dia_semana, hora_inicio, hora_fim, preco_hora")
+  .eq("id_quadra", quadraId);
 
-      if (errA) {
-        console.error("[ADMIN/RESERVAS/GRADE] Erro ao buscar agenda:", errA);
-        return res.status(500).json({
-          error: "Erro ao buscar agenda em /admin/reservas/grade",
-          detail: errA.message,
-        });
-      }
+if (errA) {
+  console.error("[ADMIN/RESERVAS/GRADE] Erro ao buscar agenda:", errA);
+  return res.status(500).json({
+    error: "Erro ao buscar agenda em /admin/reservas/grade",
+    detail: errA.message,
+  });
+}
+
+// normaliza para o resto do código continuar usando quadra_id (sem mexer no restante)
+const regrasNorm = (regras || []).map((r) => ({
+  ...r,
+  quadra_id: r.id_quadra,
+}));
+
 
       // 5) Monta mapas rápidos
       const mapReservas = new Map();

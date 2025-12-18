@@ -999,7 +999,7 @@ export default function AdminReservasPage() {
 
       {erroBases && <div className="alert alert-danger">{erroBases}</div>}
 
-      {/* FILTROS (Cinema) */}
+     {/* FILTROS (Cinema) */}
 <div className="card" style={{ padding: 14 }}>
   <div className="row g-3">
     <div className="col-lg-4">
@@ -1085,34 +1085,56 @@ export default function AdminReservasPage() {
       </div>
     </div>
 
-
-          <div className="col-lg-3">
-            <label style={styles.fLabel}>Filtro</label>
-            <select className="form-select" value={cinemaFiltro} onChange={(e) => setCinemaFiltro(e.target.value)}>
-              <option value="todas">Todas</option>
-              <option value="disponivel">Disponível</option>
-              <option value="reservada">Reservada</option>
-              <option value="bloqueado">Bloqueado</option>
-            </select>
-          </div>
-
-          <div className="col-lg-3" style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", justifyContent: "end", gap: 6 }}>
-            <button className="btn btn-primary" type="button" onClick={aplicarCinema} disabled={carregandoGrade}>
-              {carregandoGrade ? "Aplicando..." : "Aplicar"}
-            </button>
-
-            {/* ✅ botão discreto (não bagunça a UI) */}
-            <button
-              type="button"
-              onClick={() => setModalAvancadoAberto(true)}
-              style={styles.linkBtn}
-              title="Abrir pesquisa avançada (tabela global)"
-            >
-              Avançado
-            </button>
-          </div>
-        </div>
+    <div className="col-lg-3">
+      <div style={styles.field}>
+        <label style={styles.fLabel}>Filtro</label>
+        <select
+          className="form-select"
+          style={styles.control}
+          value={cinemaFiltro}
+          onChange={(e) => setCinemaFiltro(e.target.value)}
+        >
+          <option value="todas">Todas</option>
+          <option value="disponivel">Disponível</option>
+          <option value="reservada">Reservada</option>
+          <option value="bloqueado">Bloqueado</option>
+        </select>
       </div>
+    </div>
+
+    <div
+      className="col-lg-3"
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "flex-end",
+        justifyContent: "end",
+        gap: 8,
+      }}
+    >
+      <button
+        className="btn btn-primary"
+        type="button"
+        onClick={aplicarCinema}
+        disabled={carregandoGrade}
+        style={{ height: 42, padding: "10px 16px", borderRadius: 10, fontWeight: 800 }}
+      >
+        {carregandoGrade ? "Aplicando..." : "Aplicar"}
+      </button>
+
+      {/* ✅ botão discreto (não bagunça a UI) */}
+      <button
+        type="button"
+        onClick={() => setModalAvancadoAberto(true)}
+        style={styles.linkBtn}
+        title="Abrir pesquisa avançada (tabela global)"
+      >
+        Avançado
+      </button>
+    </div>
+  </div>
+</div>
+
 
       {/* CINEMA */}
       {renderCinema()}
