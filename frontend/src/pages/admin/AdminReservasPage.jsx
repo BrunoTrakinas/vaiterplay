@@ -150,63 +150,80 @@ function CriarReservaModal({
           </div>
 
           <div style={styles.body}>
-            {erro && <div className="alert alert-danger">{erro}</div>}
+  {erro && <div className="alert alert-danger">{erro}</div>}
 
-            <div className="row g-3">
-              <div className="col-md-6">
-                <label style={styles.label}>Data</label>
-                <input
-                  type="date"
-                  className="form-control"
-                  value={data}
-                  onChange={(e) => setData(e.target.value)}
-                />
-              </div>
+  <div className="row g-4">
+    <div className="col-md-6">
+      <div style={styles.field}>
+        <label style={styles.fLabel}>Data</label>
+        <input
+          type="date"
+          className="form-control"
+          style={styles.control}
+          value={data}
+          onChange={(e) => setData(e.target.value)}
+        />
+      </div>
+    </div>
 
-              <div className="col-md-6">
-                <label style={styles.label}>Hora</label>
-                <input
-                  type="time"
-                  className="form-control"
-                  value={hora}
-                  onChange={(e) => setHora(e.target.value)}
-                />
-              </div>
+    <div className="col-md-6">
+      <div style={styles.field}>
+        <label style={styles.fLabel}>Hora</label>
+        <input
+          type="time"
+          className="form-control"
+          style={styles.control}
+          value={hora}
+          onChange={(e) => setHora(e.target.value)}
+        />
+      </div>
+    </div>
 
-              <div className="col-md-6">
-                <label style={styles.label}>CPF (opcional)</label>
-                <input
-                  className="form-control"
-                  value={cpf}
-                  onChange={(e) => setCpf(e.target.value)}
-                  placeholder="CPF"
-                />
-              </div>
+    <div className="col-md-6">
+      <div style={styles.field}>
+        <label style={styles.fLabel}>CPF (opcional)</label>
+        <input
+          className="form-control"
+          style={styles.control}
+          value={cpf}
+          onChange={(e) => setCpf(e.target.value)}
+          placeholder="CPF"
+        />
+      </div>
+    </div>
 
-              <div className="col-md-6">
-                <label style={styles.label}>Telefone (opcional)</label>
-                <input
-                  className="form-control"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="Ex: 21999999999"
-                />
-              </div>
+    <div className="col-md-6">
+      <div style={styles.field}>
+        <label style={styles.fLabel}>Telefone (opcional)</label>
+        <input
+          className="form-control"
+          style={styles.control}
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          placeholder="Ex: 21999999999"
+        />
+      </div>
+    </div>
 
-              <div className="col-md-6">
-                <label style={styles.label}>Valor (estatística)</label>
-                <input
-                  type="number"
-                  className="form-control"
-                  value={valor}
-                  onChange={(e) => setValor(e.target.value)}
-                  placeholder="0"
-                />
-                <div style={{ fontSize: 12, opacity: 0.75, marginTop: 6 }}>
-                  Reserva do painel entra como <b>paid</b> e é só estatística.
-                </div>
-              </div>
-            </div>
+    <div className="col-md-6">
+      <div style={styles.field}>
+        <label style={styles.fLabel}>Valor (estatística)</label>
+        <input
+          type="number"
+          className="form-control"
+          style={styles.control}
+          value={valor}
+          onChange={(e) => setValor(e.target.value)}
+          placeholder="0"
+        />
+      </div>
+    </div>
+
+    <div className="col-12" style={{ fontSize: 12, opacity: 0.75 }}>
+      Reserva do painel entra como <b>paid</b> e é só estatística.
+    </div>
+  </div>
+
           </div>
 
           <div style={styles.footer}>
@@ -1302,14 +1319,20 @@ const styles = {
     padding: "8vh 12px 12px",
   },
   dialog: { width: "100%", maxWidth: 720 },
-  dialogWide: { width: "min(1200px, 96vw)" },
+  dialogWide: {
+  width: "min(1100px, 96vw)",
+  maxHeight: "84vh",
+},
   content: {
-    background: "#fff",
-    borderRadius: 14,
-    overflow: "hidden",
-    border: "1px solid rgba(0,0,0,.08)",
-    boxShadow: "0 20px 60px rgba(0,0,0,.25)",
-  },
+  background: "#fff",
+  borderRadius: 14,
+  overflow: "hidden",
+  border: "1px solid rgba(0,0,0,.08)",
+  boxShadow: "0 20px 60px rgba(0,0,0,.25)",
+  display: "flex",
+  flexDirection: "column",
+  maxHeight: "84vh",
+},
   header: {
     padding: "14px 16px",
     borderBottom: "1px solid rgba(0,0,0,.08)",
@@ -1328,7 +1351,10 @@ const styles = {
     cursor: "pointer",
     lineHeight: 1,
   },
-  body: { padding: 16 },
+  body: {
+  padding: 16,
+  overflowY: "auto",
+},
   footer: {
     padding: 16,
     borderTop: "1px solid rgba(0,0,0,.08)",
