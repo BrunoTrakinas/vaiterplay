@@ -3,13 +3,17 @@ import { Link } from "react-router-dom";
 import api from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
 
-// Reaproveita os MESMOS componentes do Gestor (clone total)
+// Reaproveita o MESMO componente do Gestor
 import AgendaCinemaView from "../../components/gestor/AgendaCinemaView";
 
-import AgendaFiltersBar from "../../components/gestor/AgendaFiltersBar";
+// Componentes padrão da pasta agenda (iguais ao Gestor)
+import { AgendaFilters } from "../../components/agenda/AgendaFilters";
+import { AgendaLegend } from "../../components/agenda/AgendaLegend";
+import { AgendaGrid } from "../../components/agenda/AgendaGrid";
+import { AgendaToolbar } from "../../components/agenda/AgendaToolbar";
+import AgendaRegrasBox from "../../components/agenda/AgendaRegrasBox";
+import AgendaBloqueiosBox from "../../components/agenda/AgendaBloqueiosBox";
 
-import AgendaRegrasBox from "../../components/gestor/AgendaRegrasBox";
-import AgendaBloqueiosBox from "../../components/gestor/AgendaBloqueiosBox";
 
 function AdminAgendaPage() {
   const { usuario } = useAuth();
@@ -502,7 +506,7 @@ function AdminAgendaPage() {
 
       {podeMostrarCinema && (
         <div style={{ marginTop: 12 }}>
-          <AgendaFiltersBar
+          <AgendaFilters
             periodo={periodo}
             setPeriodo={setPeriodo}
             filtroStatus={filtroStatus}
