@@ -6679,6 +6679,891 @@ app.get(
     }
   }
 );
+// ======================================
+// ROTAS ADMIN - AGENDA (GLOBAL)
+// - Clone do módulo Agenda do Gestor
+// - Admin pode ver/criar/alterar/excluir regras e bloqueios de QUALQUER quadra
+// ======================================
+
+// Helper: valida se quadra existe (sem checar dono)
+async function adminValidarQuadraExiste(quadraId) {
+  if (!quadraId) return { ok: false, status: 400, error: "quadraId é obrigatório." };
+
+  const { data, error } = await supabase
+    .from("quadras")
+    .select("id, empresa_id, gestor_id, status")
+    .eq("id", quadraId)
+    .maybeSingle();
+
+  if (error) return { ok: false, status: 500, error: error.message };
+  if (!data) return { ok: false, status: 404, error: "Quadra não encontrada." };
+
+  return { ok: true, quadra: data };
+}
+
+// =========================================
+// AGENDA / REGRAS (PAINEL ADMIN)
+// =========================================
+// GET    /admin/agenda/regras?quadraId=...
+// POST   /admin/agenda/regras/lote
+// PUT    /admin/agenda/regras/:id
+// DELETE /admin/agenda/regras/:id
+//
+// Mesmas colunas do Gestor: id_quadra, dia_da_semana, hora_inicio, hora_fim, valor
+// Diferença: Admin valida apenas se a quadra existe (visão global).
+// =========================================
+
+// -----------------------------------------
+// GET /admin/agenda/regras
+// Query: quadraId (obrigatório)
+// -----------------------------------------
+app.get(
+  "/admin/agenda/regras",
+  authPainel,
+  permitirTipos("ADMIN"),
+  async (req, res) => {
+    try {
+      const { quadraId } = req.query || {};
+
+      if (!quadraId) {
+        return res.status(400).json({
+          error: "Parâmetro quadraId é obrigatório em /admin/agenda/regras.",
+        });
+      }
+
+      // Admin: valida apenas se a quadra existe
+      const vr = await adminValidarQuadraExiste(quadraId);
+      if (!vr.ok) return res.status(vr.status).json({ error: vr.error });
+
+      const { data, error } = await supabase
+        .from("regras_horarios")
+        .select("id, id_quadra, dia_da_semana, hora_inicio, hora_fim, valor")
+        .eq("id_quadra", quadraId)
+        .order("dia_da_semana", { ascending: true })
+        .order("hora_inicio", { ascending: true });
+
+      if (error) {
+        console.error("[ADMIN/AGENDA][REGRAS][GET] Erro ao buscar regras_horarios:", error);
+        return res.status(500).json({ error: "Erro ao buscar regras em /admin/agenda/regras." });
+      }
+
+      return res.json(data || []);
+    } catch (err) {
+      console.error("[ADMIN/AGENDA][REGRAS][GET] Erro geral:", err);
+      return res.status(500).json({ error: "Erro interno em /admin/agenda/regras." });
+    }
+  }
+);
+
+// -----------------------------------------
+// POST /admin/agenda/regras/lote
+// Body: { quadraId, regras: [{ dia_da_semana, hora_inicio, hora_fim, valor }] }
+// - Mesmo padrão do Gestor: substitui todas as regras da quadra
+// -----------------------------------------
+app.post(
+  "/admin/agenda/regras/lote",
+  authPainel,
+  permitirTipos("ADMIN"),
+  async (req, res) => {
+    try {
+      const adminId = req.usuarioPainel.id;
+      const { quadraId, regras } = req.body || {};
+
+      if (!quadraId) {
+        return res.status(400).json({
+          error: "quadraId é obrigatório em /admin/agenda/regras/lote.",
+        });
+      }
+
+      const vr = await adminValidarQuadraExiste(quadraId);
+      if (!vr.ok) return res.status(vr.status).json({ error: vr.error });
+
+      if (!Array.isArray(regras)) {
+        return res.status(400).json({
+          error: "regras deve ser um array em /admin/agenda/regras/lote.",
+        });
+      }
+
+      // (padrão do Gestor) remove tudo e insere de novo
+      const { error: delErr } = await supabase
+        .from("regras_horarios")
+        .delete()
+        .eq("id_quadra", quadraId);
+
+      if (delErr) {
+        console.error("[ADMIN/AGENDA][REGRAS-LOTE][POST] Erro ao limpar regras:", delErr);
+        return res.status(500).json({ error: "Erro ao limpar regras anteriores (admin)." });
+      }
+
+      if (regras.length === 0) {
+        return res.json({ ok: true, message: "Regras removidas (lista vazia)." });
+      }
+
+      const payload = regras.map((r) => ({
+        id_quadra: quadraId,
+        dia_da_semana: Number(r.dia_da_semana),
+        hora_inicio: r.hora_inicio,
+        hora_fim: r.hora_fim,
+        valor: Number(r.valor || 0),
+        criado_por: adminId, // mantém padrão de auditoria/autor
+      }));
+
+      // validações básicas iguais ao Gestor
+      for (const p of payload) {
+        if (![0, 1, 2, 3, 4, 5, 6].includes(p.dia_da_semana)) {
+          return res.status(400).json({ error: "dia_da_semana inválido (0..6)." });
+        }
+        if (!p.hora_inicio || !p.hora_fim) {
+          return res.status(400).json({ error: "hora_inicio e hora_fim são obrigatórios." });
+        }
+        if (Number.isNaN(p.valor)) {
+          return res.status(400).json({ error: "valor inválido." });
+        }
+      }
+
+      const { data: inserted, error: insErr } = await supabase
+        .from("regras_horarios")
+        .insert(payload)
+        .select("id, id_quadra, dia_da_semana, hora_inicio, hora_fim, valor");
+
+      if (insErr) {
+        console.error("[ADMIN/AGENDA][REGRAS-LOTE][POST] Erro ao inserir regras:", insErr);
+        return res.status(500).json({ error: "Erro ao salvar regras (admin)." });
+      }
+
+      return res.json({ ok: true, regras: inserted || [] });
+    } catch (err) {
+      console.error("[ADMIN/AGENDA][REGRAS-LOTE][POST] Erro geral:", err);
+      return res.status(500).json({ error: "Erro interno em /admin/agenda/regras/lote." });
+    }
+  }
+);
+
+// -----------------------------------------
+// PUT /admin/agenda/regras/:id
+// Body: { dia_da_semana, hora_inicio, hora_fim, valor }
+// -----------------------------------------
+app.put(
+  "/admin/agenda/regras/:id",
+  authPainel,
+  permitirTipos("ADMIN"),
+  async (req, res) => {
+    try {
+      const regraId = req.params.id;
+      const { dia_da_semana, hora_inicio, hora_fim, valor } = req.body || {};
+
+      if (!regraId) {
+        return res.status(400).json({ error: "ID da regra é obrigatório." });
+      }
+
+      const updatePayload = {};
+      if (dia_da_semana !== undefined) updatePayload.dia_da_semana = Number(dia_da_semana);
+      if (hora_inicio !== undefined) updatePayload.hora_inicio = hora_inicio;
+      if (hora_fim !== undefined) updatePayload.hora_fim = hora_fim;
+      if (valor !== undefined) updatePayload.valor = Number(valor);
+
+      if (Object.keys(updatePayload).length === 0) {
+        return res.status(400).json({ error: "Nada para atualizar." });
+      }
+
+      if (updatePayload.dia_da_semana !== undefined) {
+        if (![0, 1, 2, 3, 4, 5, 6].includes(updatePayload.dia_da_semana)) {
+          return res.status(400).json({ error: "dia_da_semana inválido (0..6)." });
+        }
+      }
+      if (updatePayload.valor !== undefined && Number.isNaN(updatePayload.valor)) {
+        return res.status(400).json({ error: "valor inválido." });
+      }
+
+      // (padrão do Gestor) atualiza e retorna
+      // ✅ maybeSingle evita erro quando não encontra registro
+      const { data: updated, error: upErr } = await supabase
+        .from("regras_horarios")
+        .update(updatePayload)
+        .eq("id", regraId)
+        .select("id, id_quadra, dia_da_semana, hora_inicio, hora_fim, valor")
+        .maybeSingle();
+
+      if (upErr) {
+        console.error("[ADMIN/AGENDA][REGRAS][PUT] Erro ao atualizar regra:", upErr);
+        return res.status(500).json({ error: "Erro ao atualizar regra (admin)." });
+      }
+
+      if (!updated) {
+        return res.status(404).json({ error: "Regra não encontrada." });
+      }
+
+      // (extra seguro) valida que a quadra da regra existe (não quebra nada)
+      const vr = await adminValidarQuadraExiste(updated.id_quadra);
+      if (!vr.ok) return res.status(vr.status).json({ error: vr.error });
+
+      return res.json({ ok: true, regra: updated });
+    } catch (err) {
+      console.error("[ADMIN/AGENDA][REGRAS][PUT] Erro geral:", err);
+      return res.status(500).json({ error: "Erro interno em /admin/agenda/regras/:id." });
+    }
+  }
+);
+
+
+// -----------------------------------------
+// DELETE /admin/agenda/regras/:id
+// (mesmo padrão do Gestor: hard delete)
+// -----------------------------------------
+app.delete(
+  "/admin/agenda/regras/:id",
+  authPainel,
+  permitirTipos("ADMIN"),
+  async (req, res) => {
+    try {
+      const regraId = req.params.id;
+
+      if (!regraId) {
+        return res.status(400).json({ error: "ID da regra é obrigatório." });
+      }
+
+      const { error: delErr } = await supabase
+        .from("regras_horarios")
+        .delete()
+        .eq("id", regraId);
+
+      if (delErr) {
+        console.error("[ADMIN/AGENDA][REGRAS][DELETE] Erro ao deletar regra:", delErr);
+        return res.status(500).json({ error: "Erro ao remover regra (admin)." });
+      }
+
+      return res.json({ ok: true });
+    } catch (err) {
+      console.error("[ADMIN/AGENDA][REGRAS][DELETE] Erro geral:", err);
+      return res.status(500).json({ error: "Erro interno em /admin/agenda/regras/:id." });
+    }
+  }
+);
+
+
+// =========================================
+// AGENDA / BLOQUEIOS (PAINEL ADMIN)
+// =========================================
+// GET    /admin/agenda/bloqueios?quadraId=...&dataInicio=...&dataFim=...
+// POST   /admin/agenda/bloqueios/lote
+// PUT    /admin/agenda/bloqueios/:id
+// DELETE /admin/agenda/bloqueios/:id
+//
+// Mesmas colunas do Gestor: quadra_id, data, hora_inicio, hora_fim, motivo
+// Diferença: Admin valida apenas se a quadra existe (visão global).
+// =========================================
+
+// -----------------------------------------
+// GET /admin/agenda/bloqueios
+// Query: quadraId (obrigatório), dataInicio/opcional, dataFim/opcional
+// -----------------------------------------
+app.get(
+  "/admin/agenda/bloqueios",
+  authPainel,
+  permitirTipos("ADMIN"),
+  async (req, res) => {
+    try {
+      const { quadraId, dataInicio, dataFim } = req.query || {};
+
+      if (!quadraId) {
+        return res.status(400).json({
+          error: "Parâmetro quadraId é obrigatório em /admin/agenda/bloqueios.",
+        });
+      }
+
+      const vr = await adminValidarQuadraExiste(quadraId);
+      if (!vr.ok) return res.status(vr.status).json({ error: vr.error });
+
+      // Mesma lógica do Gestor: intervalo opcional
+      let query = supabase
+        .from("bloqueios_quadra")
+        .select("id, quadra_id, data, hora_inicio, hora_fim, motivo")
+        .eq("quadra_id", quadraId)
+        .order("data", { ascending: true })
+        .order("hora_inicio", { ascending: true });
+
+      if (dataInicio) query = query.gte("data", String(dataInicio).slice(0, 10));
+      if (dataFim) query = query.lte("data", String(dataFim).slice(0, 10));
+
+      const { data, error } = await query;
+
+      if (error) {
+        console.error("[ADMIN/AGENDA][BLOQUEIOS][GET] Erro ao buscar bloqueios:", error);
+        return res.status(500).json({ error: "Erro ao buscar bloqueios (admin)." });
+      }
+
+      return res.json(data || []);
+    } catch (err) {
+      console.error("[ADMIN/AGENDA][BLOQUEIOS][GET] Erro geral:", err);
+      return res.status(500).json({ error: "Erro interno em /admin/agenda/bloqueios." });
+    }
+  }
+);
+
+// -----------------------------------------
+// POST /admin/agenda/bloqueios/lote
+// Body: { quadraId, bloqueios: [{ data, hora_inicio, hora_fim, motivo }] }
+// - Mesmo padrão do Gestor: substitui todos os bloqueios da quadra (hard reset)
+// -----------------------------------------
+app.post(
+  "/admin/agenda/bloqueios/lote",
+  authPainel,
+  permitirTipos("ADMIN"),
+  async (req, res) => {
+    try {
+      const adminId = req.usuarioPainel.id;
+      const { quadraId, bloqueios } = req.body || {};
+
+      if (!quadraId) {
+        return res.status(400).json({
+          error: "quadraId é obrigatório em /admin/agenda/bloqueios/lote.",
+        });
+      }
+
+      const vr = await adminValidarQuadraExiste(quadraId);
+      if (!vr.ok) return res.status(vr.status).json({ error: vr.error });
+
+      if (!Array.isArray(bloqueios)) {
+        return res.status(400).json({
+          error: "bloqueios deve ser um array em /admin/agenda/bloqueios/lote.",
+        });
+      }
+
+      // (padrão do Gestor) remove tudo e insere de novo
+      const { error: delErr } = await supabase
+        .from("bloqueios_quadra")
+        .delete()
+        .eq("quadra_id", quadraId);
+
+      if (delErr) {
+        console.error("[ADMIN/AGENDA][BLOQUEIOS-LOTE][POST] Erro ao limpar bloqueios:", delErr);
+        return res.status(500).json({ error: "Erro ao limpar bloqueios anteriores (admin)." });
+      }
+
+      if (bloqueios.length === 0) {
+        return res.json({ ok: true, message: "Bloqueios removidos (lista vazia)." });
+      }
+
+      const payload = bloqueios.map((b) => ({
+        quadra_id: quadraId,
+        data: String(b.data).slice(0, 10), // YYYY-MM-DD
+        hora_inicio: b.hora_inicio || null,
+        hora_fim: b.hora_fim || null,
+        motivo: b.motivo || null,
+        criado_por: adminId,
+      }));
+
+      for (const p of payload) {
+        if (!p.data) return res.status(400).json({ error: "data é obrigatória em bloqueios." });
+
+        // se vier faixa, precisa vir completa
+        const temIni = !!p.hora_inicio;
+        const temFim = !!p.hora_fim;
+        if ((temIni && !temFim) || (!temIni && temFim)) {
+          return res.status(400).json({
+            error: "Para bloqueio por faixa, informe hora_inicio e hora_fim (ambos).",
+          });
+        }
+      }
+
+      const { data: inserted, error: insErr } = await supabase
+        .from("bloqueios_quadra")
+        .insert(payload)
+        .select("id, quadra_id, data, hora_inicio, hora_fim, motivo");
+
+      if (insErr) {
+        console.error("[ADMIN/AGENDA][BLOQUEIOS-LOTE][POST] Erro ao inserir bloqueios:", insErr);
+        return res.status(500).json({ error: "Erro ao salvar bloqueios (admin)." });
+      }
+
+      return res.json({ ok: true, bloqueios: inserted || [] });
+    } catch (err) {
+      console.error("[ADMIN/AGENDA][BLOQUEIOS-LOTE][POST] Erro geral:", err);
+      return res.status(500).json({ error: "Erro interno em /admin/agenda/bloqueios/lote." });
+    }
+  }
+);
+
+// -----------------------------------------
+// PUT /admin/agenda/bloqueios/:id
+// Body: { data, hora_inicio, hora_fim, motivo }
+// -----------------------------------------
+app.put(
+  "/admin/agenda/bloqueios/:id",
+  authPainel,
+  permitirTipos("ADMIN"),
+  async (req, res) => {
+    try {
+      const bloqueioId = req.params.id;
+      const { data, hora_inicio, hora_fim, motivo } = req.body || {};
+
+      if (!bloqueioId) {
+        return res.status(400).json({ error: "ID do bloqueio é obrigatório." });
+      }
+
+      const updatePayload = {};
+      if (data !== undefined) updatePayload.data = String(data).slice(0, 10);
+      if (hora_inicio !== undefined) updatePayload.hora_inicio = hora_inicio || null;
+      if (hora_fim !== undefined) updatePayload.hora_fim = hora_fim || null;
+      if (motivo !== undefined) updatePayload.motivo = motivo || null;
+
+      if (Object.keys(updatePayload).length === 0) {
+        return res.status(400).json({ error: "Nada para atualizar." });
+      }
+
+      // valida faixa (se vier um, tem que vir os dois)
+      const temIni = updatePayload.hora_inicio !== undefined && !!updatePayload.hora_inicio;
+      const temFim = updatePayload.hora_fim !== undefined && !!updatePayload.hora_fim;
+
+      // se um foi setado e o outro não foi setado, pode causar inconsistência
+      // então buscamos o registro atual para validar o estado final
+      const { data: atual, error: getErr } = await supabase
+        .from("bloqueios_quadra")
+        .select("id, quadra_id, data, hora_inicio, hora_fim, motivo")
+        .eq("id", bloqueioId)
+        .maybeSingle();
+
+      if (getErr) {
+        console.error("[ADMIN/AGENDA][BLOQUEIOS][PUT] Erro ao buscar bloqueio atual:", getErr);
+        return res.status(500).json({ error: "Erro ao buscar bloqueio (admin)." });
+      }
+      if (!atual) {
+        return res.status(404).json({ error: "Bloqueio não encontrado." });
+      }
+
+      // Admin: garante que quadra existe (extra seguro)
+      const vr = await adminValidarQuadraExiste(atual.quadra_id);
+      if (!vr.ok) return res.status(vr.status).json({ error: vr.error });
+
+      const horaIniFinal =
+        updatePayload.hora_inicio !== undefined ? updatePayload.hora_inicio : atual.hora_inicio;
+      const horaFimFinal =
+        updatePayload.hora_fim !== undefined ? updatePayload.hora_fim : atual.hora_fim;
+
+      const finalTemIni = !!horaIniFinal;
+      const finalTemFim = !!horaFimFinal;
+
+      if ((finalTemIni && !finalTemFim) || (!finalTemIni && finalTemFim)) {
+        return res.status(400).json({
+          error: "Para bloqueio por faixa, informe hora_inicio e hora_fim (ambos).",
+        });
+      }
+
+      const { data: updated, error: upErr } = await supabase
+        .from("bloqueios_quadra")
+        .update(updatePayload)
+        .eq("id", bloqueioId)
+        .select("id, quadra_id, data, hora_inicio, hora_fim, motivo")
+        .single();
+
+      if (upErr) {
+        console.error("[ADMIN/AGENDA][BLOQUEIOS][PUT] Erro ao atualizar bloqueio:", upErr);
+        return res.status(500).json({ error: "Erro ao atualizar bloqueio (admin)." });
+      }
+
+      return res.json({ ok: true, bloqueio: updated });
+    } catch (err) {
+      console.error("[ADMIN/AGENDA][BLOQUEIOS][PUT] Erro geral:", err);
+      return res.status(500).json({ error: "Erro interno em /admin/agenda/bloqueios/:id." });
+    }
+  }
+);
+
+// -----------------------------------------
+// DELETE /admin/agenda/bloqueios/:id
+// (mesmo padrão do Gestor: hard delete)
+// -----------------------------------------
+app.delete(
+  "/admin/agenda/bloqueios/:id",
+  authPainel,
+  permitirTipos("ADMIN"),
+  async (req, res) => {
+    try {
+      const bloqueioId = req.params.id;
+
+      if (!bloqueioId) {
+        return res.status(400).json({ error: "ID do bloqueio é obrigatório." });
+      }
+
+      const { error: delErr } = await supabase
+        .from("bloqueios_quadra")
+        .delete()
+        .eq("id", bloqueioId);
+
+      if (delErr) {
+        console.error("[ADMIN/AGENDA][BLOQUEIOS][DELETE] Erro ao deletar bloqueio:", delErr);
+        return res.status(500).json({ error: "Erro ao remover bloqueio (admin)." });
+      }
+
+      return res.json({ ok: true });
+    } catch (err) {
+      console.error("[ADMIN/AGENDA][BLOQUEIOS][DELETE] Erro geral:", err);
+      return res.status(500).json({ error: "Erro interno em /admin/agenda/bloqueios/:id." });
+    }
+  }
+);
+
+
+// =========================================
+// AGENDA / VISÃO DE SLOTS (PAINEL ADMIN) — CLONE DO GESTOR
+// =========================================
+// GET /admin/agenda/slots
+//
+// Mesma visão "cinema" do Gestor, porém:
+// - Admin pode consultar QUALQUER quadra (global)
+// - Única diferença: validação da quadra (existe) em vez de "quadra pertence ao gestor"
+//
+// Query params:
+//   quadraId   (obrigatório)  → UUID da quadra
+//   dataInicio (opcional)     → AAAA-MM-DD ou DD/MM/AAAA
+//   dataFim    (opcional)     → AAAA-MM-DD ou DD/MM/AAAA
+//   filtro     (opcional)     → "disponivel" | "reservada" | "bloqueada" | "todas" (default: "todas")
+//
+app.get(
+  "/admin/agenda/slots",
+  authPainel,
+  permitirTipos("ADMIN"),
+  async (req, res) => {
+    try {
+      const { quadraId, dataInicio, dataFim, filtro } = req.query || {};
+
+      if (!quadraId) {
+        return res.status(400).json({
+          error: "Parâmetro quadraId é obrigatório em /admin/agenda/slots.",
+        });
+      }
+
+      // 1) Admin: garante apenas que a quadra EXISTE
+      const vr = await adminValidarQuadraExiste(quadraId);
+      if (!vr.ok) {
+        return res.status(vr.status).json({ error: vr.error });
+      }
+
+      // 2) Monta intervalo de datas
+      const hoje = new Date();
+      hoje.setHours(0, 0, 0, 0);
+
+      let dtInicio = new Date(hoje.getTime());
+      let dtFim = new Date(hoje.getTime());
+      dtFim.setDate(dtFim.getDate() + 6); // padrão 7 dias (hoje + 6)
+
+      if (dataInicio) {
+        const parsed = parseDataAgendamentoBr(dataInicio);
+        if (!parsed) {
+          return res.status(400).json({
+            error:
+              "dataInicio inválida. Use AAAA-MM-DD ou DD/MM/AAAA em /admin/agenda/slots.",
+          });
+        }
+        parsed.setHours(0, 0, 0, 0);
+        dtInicio = parsed;
+      }
+
+      if (dataFim) {
+        const parsed = parseDataAgendamentoBr(dataFim);
+        if (!parsed) {
+          return res.status(400).json({
+            error:
+              "dataFim inválida. Use AAAA-MM-DD ou DD/MM/AAAA em /admin/agenda/slots.",
+          });
+        }
+        parsed.setHours(0, 0, 0, 0);
+        dtFim = parsed;
+      }
+
+      if (dtFim < dtInicio) {
+        return res.status(400).json({
+          error:
+            "dataFim não pode ser menor que dataInicio em /admin/agenda/slots.",
+        });
+      }
+
+      // Protege contra intervalos muito grandes (máx. 60 dias)
+      const diffMs = dtFim.getTime() - dtInicio.getTime();
+      const diffDias = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+      if (diffDias > 60) {
+        return res.status(400).json({
+          error: "Intervalo máximo permitido é de 60 dias em /admin/agenda/slots.",
+        });
+      }
+
+      const dataInicioISO = formatDateISO(dtInicio);
+      const dataFimISO = formatDateISO(dtFim);
+
+      // 3) Busca REGRAS de horário da quadra (recorrentes por dia_da_semana)
+      const { data: regras, error: errRegras } = await supabase
+        .from("regras_horarios")
+        .select(
+          `
+          id,
+          id_quadra,
+          dia_da_semana,
+          hora_inicio,
+          hora_fim,
+          valor
+        `
+        )
+        .eq("id_quadra", quadraId);
+
+      if (errRegras) {
+        console.error(
+          "[ADMIN/AGENDA/SLOTS][GET] Erro ao buscar regras_horarios:",
+          errRegras
+        );
+        return res.status(500).json({
+          error: "Erro ao buscar regras de horário em /admin/agenda/slots.",
+        });
+      }
+
+      const regrasList = regras || [];
+
+      // Mapa por dia_da_semana (0=Domingo ... 6=Sábado)
+      const regrasPorDiaSemana = new Map();
+      for (const r of regrasList) {
+        const key = r.dia_da_semana;
+        if (!regrasPorDiaSemana.has(key)) {
+          regrasPorDiaSemana.set(key, []);
+        }
+        regrasPorDiaSemana.get(key).push(r);
+      }
+
+      // 4) Busca RESERVAS no período (pending/paid)
+      const { data: reservas, error: errReservas } = await supabase
+        .from("reservas")
+        .select(
+          `
+          id,
+          quadra_id,
+          data,
+          hora,
+          status,
+          preco_total,
+          user_cpf,
+          phone
+        `
+        )
+        .eq("quadra_id", quadraId)
+        .gte("data", dataInicioISO)
+        .lte("data", dataFimISO)
+        .in("status", ["pending", "paid", "pendente", "pago"]);
+
+      if (errReservas) {
+        console.error(
+          "[ADMIN/AGENDA/SLOTS][GET] Erro ao buscar reservas:",
+          errReservas
+        );
+        return res.status(500).json({
+          error: "Erro ao buscar reservas em /admin/agenda/slots.",
+        });
+      }
+
+      const reservasList = reservas || [];
+
+      // Mapa chave "YYYY-MM-DD|HH:MM" -> reserva
+      const reservasPorChave = new Map();
+      for (const r of reservasList) {
+        const dataStr = String(r.data).slice(0, 10);
+        const horaStr = String(r.hora).slice(0, 5); // HH:MM
+        const key = `${dataStr}|${horaStr}`;
+        reservasPorChave.set(key, r);
+      }
+
+      // 5) Busca BLOQUEIOS no período
+      const { data: bloqueios, error: errBloqueios } = await supabase
+        .from("bloqueios_quadra")
+        .select(
+          `
+          id,
+          quadra_id,
+          data,
+          hora_inicio,
+          hora_fim,
+          motivo
+        `
+        )
+        .eq("quadra_id", quadraId)
+        .gte("data", dataInicioISO)
+        .lte("data", dataFimISO);
+
+      if (errBloqueios) {
+        console.error(
+          "[ADMIN/AGENDA/SLOTS][GET] Erro ao buscar bloqueios_quadra:",
+          errBloqueios
+        );
+        return res.status(500).json({
+          error: "Erro ao buscar bloqueios em /admin/agenda/slots.",
+        });
+      }
+
+      const bloqueiosList = bloqueios || [];
+
+      // Mapa por data "YYYY-MM-DD" -> lista de bloqueios
+      const bloqueiosPorData = new Map();
+      for (const b of bloqueiosList) {
+        const dataStr = String(b.data).slice(0, 10);
+        if (!bloqueiosPorData.has(dataStr)) {
+          bloqueiosPorData.set(dataStr, []);
+        }
+        bloqueiosPorData.get(dataStr).push(b);
+      }
+
+      // 6) Filtro de status para resposta
+      const filtroNorm = String(filtro || "todas").toLowerCase();
+      const filtroValido = ["todas", "disponivel", "reservada", "bloqueada"];
+      const filtroFinal = filtroValido.includes(filtroNorm) ? filtroNorm : "todas";
+
+      // 7) Gera lista de datas do intervalo
+      const dias = [];
+      const dtCursor = new Date(dtInicio.getTime());
+      while (dtCursor.getTime() <= dtFim.getTime()) {
+        const iso = dtCursor.toISOString().slice(0, 10); // YYYY-MM-DD
+        const weekday = dtCursor.getDay(); // 0=Domingo ... 6=Sábado
+
+        const regrasDoDia = regrasPorDiaSemana.get(weekday) || [];
+        const bloqueiosDoDia = bloqueiosPorData.get(iso) || [];
+
+        const slotsDia = [];
+
+        for (const regra of regrasDoDia) {
+          // Para cada regra (ex.: 18:00–23:00), gera slots de 1h
+          let slotsRegra = [];
+          try {
+            slotsRegra = gerarSlotsHoraCheia(regra.hora_inicio, regra.hora_fim);
+          } catch (e) {
+            console.error(
+              "[ADMIN/AGENDA/SLOTS][GET] Erro ao gerar slots para regra:",
+              regra,
+              e
+            );
+            continue;
+          }
+
+          for (const slot of slotsRegra) {
+            const horaInicioSlot = slot.hora_inicio; // HH:MM
+            const horaFimSlot = slot.hora_fim;       // HH:MM
+
+            // Verifica bloqueio (prioridade sobre reserva)
+            let statusSlot = "DISPONIVEL";
+            let reservaInfo = null;
+            let bloqueioInfo = null;
+
+            // 7.1) Checa bloqueio
+            if (bloqueiosDoDia.length > 0) {
+              for (const b of bloqueiosDoDia) {
+                const bHoraInicio = b.hora_inicio;
+                const bHoraFim = b.hora_fim;
+
+                // Caso especial: bloqueio de dia inteiro (sem horas)
+                if (!bHoraInicio && !bHoraFim) {
+                  statusSlot = "BLOQUEADO";
+                  bloqueioInfo = {
+                    id: b.id,
+                    motivo: b.motivo,
+                    tipo: "DIA_INTEIRO",
+                  };
+                  break;
+                }
+
+                // Bloqueio com faixa de horário
+                if (bHoraInicio && bHoraFim) {
+                  const [bhIni, bmIni] = String(bHoraInicio)
+                    .slice(0, 5)
+                    .split(":")
+                    .map((n) => Number(n));
+                  const [bhFim, bmFim] = String(bHoraFim)
+                    .slice(0, 5)
+                    .split(":")
+                    .map((n) => Number(n));
+
+                  const [shIni, smIni] = horaInicioSlot
+                    .split(":")
+                    .map((n) => Number(n));
+
+                  const slotMin = shIni * 60 + smIni;
+                  const bIniMin = bhIni * 60 + bmIni;
+                  const bFimMin = bhFim * 60 + bmFim;
+
+                  // Se o início do slot está dentro da faixa de bloqueio → BLOQUEADO
+                  if (slotMin >= bIniMin && slotMin < bFimMin) {
+                    statusSlot = "BLOQUEADO";
+                    bloqueioInfo = {
+                      id: b.id,
+                      motivo: b.motivo,
+                      tipo: "FAIXA_HORARIO",
+                    };
+                    break;
+                  }
+                }
+              }
+            }
+
+            // 7.2) Se NÃO estiver bloqueado, checa reserva
+            if (statusSlot !== "BLOQUEADO") {
+              const chave = `${iso}|${horaInicioSlot}`;
+              const r = reservasPorChave.get(chave);
+              if (r) {
+                statusSlot = "RESERVADO";
+                reservaInfo = {
+                  id: r.id,
+                  status: r.status,
+                  preco_total: Number(r.preco_total || 0),
+                  user_cpf: r.user_cpf,
+                  phone: r.phone,
+                };
+              }
+            }
+
+            // 7.3) Aplica filtro de status
+            const statusLower = statusSlot.toLowerCase(); // disponivel | reservado | bloqueado
+            if (
+              filtroFinal !== "todas" &&
+              !(
+                (filtroFinal === "disponivel" && statusLower === "disponivel") ||
+                (filtroFinal === "reservada" && statusLower === "reservado") ||
+                (filtroFinal === "bloqueada" && statusLower === "bloqueado")
+              )
+            ) {
+              continue;
+            }
+
+            slotsDia.push({
+              data: iso,
+              hora_inicio: horaInicioSlot,
+              hora_fim: horaFimSlot,
+              status: statusSlot,
+              reserva: reservaInfo,
+              bloqueio: bloqueioInfo,
+              preco_hora: Number(regra.valor || 0),
+              regra_id: regra.id,
+            });
+          }
+        }
+
+        dias.push({
+          data: iso,
+          dia_semana: weekday,
+          slots: slotsDia,
+        });
+
+        dtCursor.setDate(dtCursor.getDate() + 1);
+      }
+
+      return res.json({
+        quadra_id: quadraId,
+        data_inicio: dataInicioISO,
+        data_fim: dataFimISO,
+        filtro: filtroFinal,
+        dias,
+      });
+    } catch (err) {
+      console.error("[ADMIN/AGENDA/SLOTS][GET] Erro geral:", err);
+      return res.status(500).json({
+        error: "Erro interno em /admin/agenda/slots.",
+      });
+    }
+  }
+);
+
 
 // -----------------------------------------
 // GET /gestor/reservas/grade  → visão "cinema" da agenda
