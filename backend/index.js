@@ -10075,12 +10075,12 @@ app.post("/mp-webhook", async (req, res) => {
     console.log("[MP WEBHOOK] body recebido:", JSON.stringify(req.body, null, 2));
     console.log("[MP WEBHOOK] query recebida:", JSON.stringify(req.query || {}, null, 2));
 
-    // Mercado Pago pode variar: { type, action, data: {id} } | ou query topic/id | ou body id/resource
     const body = req.body || {};
-    const type = (body.type || req.query.type || req.query.topic || "").toString().toLowerCase();
+    const type = (body.type || req.query.type || req.query.topic || "")
+      .toString()
+      .toLowerCase();
     const action = (body.action || "").toString().toLowerCase();
 
-    // tenta pegar o paymentId por várias chaves comuns
     const paymentId =
       body?.data?.id ||
       body?.data?.["id"] ||
@@ -10090,21 +10090,23 @@ app.post("/mp-webhook", async (req, res) => {
       req.query?.id ||
       null;
 
-    // se não for evento de pagamento, ignora (idempotente)
     const isPaymentEvent =
       type === "payment" ||
       type === "payments" ||
       action.includes("payment") ||
-      // em alguns cenários o MP manda topic=payment
       req.query?.topic === "payment" ||
       req.query?.type === "payment";
 
     if (!isPaymentEvent || !paymentId) {
-      console.log("[MP WEBHOOK] Evento ignorado (não é payment ou sem paymentId).", { type, action, paymentId });
+      console.log("[MP WEBHOOK] Evento ignorado (não é payment ou sem paymentId).", {
+        type,
+        action,
+        paymentId,
+      });
       return res.sendStatus(200);
     }
 
-    // 1) Busca o pagamento completo no MP para ver o status real
+    // 1) Busca pagamento completo no MP
     const payment = await mpPayment.get({ id: paymentId });
     const p = payment?.response || payment;
 
@@ -10114,22 +10116,21 @@ app.post("/mp-webhook", async (req, res) => {
       status_detail: p?.status_detail,
     });
 
-    // Nos interessa apenas quando estiver realmente aprovado
     if (String(p?.status || "").toLowerCase() !== "approved") {
       console.log("[MP WEBHOOK] Pagamento ainda não aprovado. Status:", p?.status);
       return res.sendStatus(200);
     }
 
-    // 2) Atualiza a reserva correspondente no Supabase para "paid"
-    // IMPORTANTE: usar maybeSingle pra não gerar erro quando não encontrar (webhook duplicado)
+    // 2) Atualiza reserva para paid + pago_via_pix (idempotente)
     const { data: reservaAtualizada, error: updErr } = await supabase
       .from("reservas")
       .update({
         status: "paid",
+        pago_via_pix: true, // ✅ importante pro seu financeiro bater certinho
         updated_at: new Date().toISOString(),
       })
       .eq("id_transacao_pix", String(p.id))
-      .neq("status", "paid") // ✅ evita reprocessar (idempotência na reserva)
+      .neq("status", "paid")
       .select(
         `
         id,
@@ -10152,7 +10153,7 @@ app.post("/mp-webhook", async (req, res) => {
 
     if (updErr) {
       console.error("[MP WEBHOOK] Erro ao atualizar reserva no Supabase:", updErr);
-      return res.sendStatus(200); // não dá erro pro MP, senão ele re-tenta sem parar
+      return res.sendStatus(200);
     }
 
     if (!reservaAtualizada) {
@@ -10163,29 +10164,22 @@ app.post("/mp-webhook", async (req, res) => {
       return res.sendStatus(200);
     }
 
-    // 2.1) Cria/atualiza registro financeiro em pagamentos (idempotente por mp_payment_id)
+    // 2.1) Registra/atualiza em pagamentos (idempotente por mp_payment_id)
     try {
       const round2 = (v) => Math.round((Number(v || 0) + Number.EPSILON) * 100) / 100;
 
       const total = Number(reservaAtualizada.preco_total || 0);
 
-      // ============================================
-      // TAXA PLATAFORMA (%): prioridade por override
-      // 1) quadra.taxa_plataforma_override
-      // 2) gestor.taxa_plataforma_global
-      // 3) empresa.taxa_plataforma
-      // ============================================
+      // taxa plataforma (%): override quadra > taxa global gestor > taxa empresa
       let taxaPercent = 0;
 
       const quadra = reservaAtualizada.quadras || null;
       const quadraOverride = quadra?.taxa_plataforma_override;
 
-      // 1) override da quadra
       if (quadraOverride !== null && quadraOverride !== undefined) {
         const n = Number(quadraOverride);
         taxaPercent = Number.isFinite(n) ? n : 0;
       } else {
-        // 2) taxa global do gestor
         const gestorId = quadra?.gestor_id || null;
 
         if (gestorId) {
@@ -10201,7 +10195,6 @@ app.post("/mp-webhook", async (req, res) => {
           }
         }
 
-        // 3) fallback empresa
         if (!taxaPercent) {
           const empresaId = quadra?.empresa_id || null;
 
@@ -10223,49 +10216,52 @@ app.post("/mp-webhook", async (req, res) => {
       const taxaValor = round2(total * (taxaPercent / 100));
       const liquido = round2(total - taxaValor);
 
-      // Pega QR/Payload se existirem (nem sempre vem)
       const mpQr = p?.point_of_interaction?.transaction_data?.qr_code || null;
       const mpPayload = p?.point_of_interaction?.transaction_data?.qr_code_base64 || null;
 
-      // ✅ Upsert por mp_payment_id = idempotência real
-      const { error: upsertErr } = await supabase
+      const payloadPagamento = {
+        reserva_id: reservaAtualizada.id,
+        valor_total: total,
+        taxa_plataforma: taxaValor,
+        valor_liquido_gestor: liquido,
+        status: "paid",
+        meio_pagamento: "pix",
+        mp_payment_id: String(p.id), // ✅ chave de idempotência
+        mp_qr_code: mpQr,
+        mp_payload: mpPayload,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      const { data: pagUpsert, error: upsertErr } = await supabase
         .from("pagamentos")
-        .upsert(
-          [
-            {
-              reserva_id: reservaAtualizada.id,
-              valor_total: total,
-              taxa_plataforma: taxaValor,
-              valor_liquido_gestor: liquido,
-              status: "paid",
-              meio_pagamento: "pix",
-              mp_payment_id: String(p.id),
-              mp_qr_code: mpQr,
-              mp_payload: mpPayload,
-              updated_at: new Date().toISOString(),
-            },
-          ],
-          { onConflict: "mp_payment_id" }
-        );
+        .upsert([payloadPagamento], { onConflict: "mp_payment_id" })
+        .select("id, mp_payment_id, reserva_id")
+        .maybeSingle();
 
       if (upsertErr) {
         console.error("[MP WEBHOOK] Erro ao upsert em pagamentos:", upsertErr);
       } else {
-        console.log("[MP WEBHOOK] Pagamento registrado/atualizado em pagamentos para reserva", reservaAtualizada.id);
+        console.log("[MP WEBHOOK] Pagamento registrado/atualizado em pagamentos:", pagUpsert);
       }
     } catch (e) {
       console.error("[MP WEBHOOK] Falha inesperada ao registrar pagamentos:", e);
     }
 
+    // 3) WhatsApp confirmação
     const telefone = reservaAtualizada.phone;
     const nomeQuadra = buildNomeQuadraDinamico(reservaAtualizada.quadras || null);
     const dataReserva = reservaAtualizada.data;
     const horaReserva = reservaAtualizada.hora;
 
-    // 3) Envia confirmação automática para o cliente no WhatsApp
-    // (Só vai disparar 1x, porque só cai aqui quando a reserva foi efetivamente alterada pra paid)
     if (telefone) {
-      const msgConfirmacao = `✅ *Pagamento confirmado!*\n\nSua reserva foi aprovada com sucesso.\n\nQuadra: ${nomeQuadra}\nData: ${dataReserva}\nHora: ${horaReserva}\n\nObrigado por usar o VaiTerPlay!`;
+      const msgConfirmacao =
+        `✅ *Pagamento confirmado!*\n\n` +
+        `Sua reserva foi aprovada com sucesso.\n\n` +
+        `Quadra: ${nomeQuadra}\n` +
+        `Data: ${dataReserva}\n` +
+        `Hora: ${horaReserva}\n\n` +
+        `Obrigado por usar o VaiTerPlay!`;
 
       await callWhatsAppAPI(buildTextMessage(telefone, msgConfirmacao));
     } else {
@@ -10275,10 +10271,10 @@ app.post("/mp-webhook", async (req, res) => {
     return res.sendStatus(200);
   } catch (err) {
     console.error("[MP WEBHOOK] Erro ao processar webhook do Mercado Pago:", err);
-    // Mesmo com erro, respondemos 200 para o MP não bombardear seu servidor.
     return res.sendStatus(200);
   }
 });
+
 
 
 
