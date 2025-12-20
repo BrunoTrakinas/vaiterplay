@@ -11739,6 +11739,10 @@ function buildDateArray(fromStr, toStr) {
 
 // -----------------------------------------
 // Helper: Dashboard Admin - visão geral
+// REGRA NOVA:
+// - "Faturamento" e "Reservas pagas" contam SOMENTE:
+//   origem="whatsapp" + pago_via_pix=true + status="paid"
+// - Reservas do painel (origem="painel") NÃO entram no faturamento
 // -----------------------------------------
 async function buildAdminDashboardOverview(params) {
   const { from, to } = params || {};
@@ -11759,6 +11763,7 @@ async function buildAdminDashboardOverview(params) {
       : hoje.toISOString().slice(0, 10);
 
   // 1) Busca reservas no período (somente leitura)
+  // ✅ adiciona pago_via_pix + origem
   let query = supabase
     .from("reservas")
     .select(
@@ -11770,6 +11775,8 @@ async function buildAdminDashboardOverview(params) {
       preco_total,
       user_cpf,
       phone,
+      pago_via_pix,
+      origem,
       quadras (
         id,
         tipo,
@@ -11790,143 +11797,59 @@ async function buildAdminDashboardOverview(params) {
 
   const reservasList = reservas || [];
 
-    // -----------------------------
-  // EXTRA (Admin Dashboard): métricas por quadra + diagnósticos
-  // -----------------------------
+  // Helper local: reserva conta como "PIX RECEBIDO"?
+  // ✅ regra: whatsapp + pago_via_pix + paid
+  function isPixRecebido(reserva) {
+    const st = String(reserva?.status || "").toLowerCase().trim();
+    const origem = String(reserva?.origem || "").toLowerCase().trim();
+    const pagoViaPix = reserva?.pago_via_pix === true;
 
-  // 1) Reservas por quadra (paid/pending/canceled + valores)
-  const reservasPorQuadra = new Map();
-
-  for (const r of reservasList) {
-    const quadraId = r?.quadra_id || r?.quadras?.id || null;
-    if (!quadraId) continue;
-
-    const status = (r?.status_norm || r?.status || "").toString().trim().toLowerCase();
-    const valor = Number(r?.valor || r?.valor_total || 0) || 0;
-
-    const quadraNome = typeof buildNomeQuadraDinamico === "function"
-      ? buildNomeQuadraDinamico(r.quadras || null)
-      : (r?.quadras?.nome || r?.quadras?.id || quadraId);
-
-    if (!reservasPorQuadra.has(quadraId)) {
-      reservasPorQuadra.set(quadraId, {
-        quadra_id: quadraId,
-        quadra_nome: quadraNome,
-        total: 0,
-        paid: 0,
-        pending: 0,
-        canceled: 0,
-        receita_total: 0,
-        receita_paga: 0,
-      });
-    }
-
-    const info = reservasPorQuadra.get(quadraId);
-    info.total += 1;
-    info.receita_total += valor;
-
-    if (status === "paid") {
-      info.paid += 1;
-      info.receita_paga += valor;
-    } else if (status === "pending") {
-      info.pending += 1;
-    } else if (status === "canceled" || status === "cancelled") {
-      info.canceled += 1;
-    }
+    return origem === "whatsapp" && pagoViaPix && st === "paid";
   }
-
-  const reservas_por_quadra_status = Array.from(reservasPorQuadra.values())
-    .sort((a, b) => (b.pending - a.pending) || (b.paid - a.paid) || (b.total - a.total))
-    .slice(0, 30);
-
-  // 2) Quadras sem regras de horário (diagnóstico)
-  // OBS: aqui eu faço de forma segura: se der erro, não quebra o dashboard
-  let quadras_sem_regras = [];
-  try {
-    const { data: quadrasAll, error: errQ } = await supabase
-      .from("quadras")
-      .select("id, empresa_id, tipo, material, modalidade, status, ativo");
-
-    if (errQ) throw errQ;
-
-    const { data: regrasAll, error: errR } = await supabase
-      .from("regras_horarios")
-      .select("id, quadra_id, ativo");
-
-    if (errR) throw errR;
-
-    const regrasAtivasPorQuadra = new Set(
-      (regrasAll || [])
-        .filter((r) => r && r.quadra_id && (r.ativo === true || r.ativo === 1))
-        .map((r) => r.quadra_id)
-    );
-
-    const listaQuadras = quadrasAll || [];
-    const sem = [];
-    for (const q of listaQuadras) {
-      if (!q?.id) continue;
-      if (!regrasAtivasPorQuadra.has(q.id)) {
-        // nome dinâmico (igual você usa no resto do sistema)
-        const nome = typeof buildNomeQuadraDinamico === "function"
-          ? buildNomeQuadraDinamico(q)
-          : `${q.modalidade || "Modalidade"} - ${q.material || "Material"} (${q.tipo || "Tipo"})`;
-
-        sem.push({
-          quadra_id: q.id,
-          empresa_id: q.empresa_id || null,
-          quadra_nome: nome,
-          status: q.status ?? null,
-          ativo: q.ativo ?? null,
-        });
-      }
-    }
-
-    quadras_sem_regras = sem.slice(0, 50);
-  } catch (e) {
-    console.warn("[ADMIN/DASH] Falha ao calcular quadras_sem_regras:", e?.message || e);
-    quadras_sem_regras = [];
-  }
-
 
   // 2) KPIs gerais
   let totalReservas = 0;
-  let reservasPagas = 0;
+  let reservasPagasPix = 0;       // ✅ pagas via PIX (regra acima)
   let reservasPendentes = 0;
   let reservasCanceladas = 0;
-  let receitaBruta = 0;
+  let receitaBrutaPix = 0;        // ✅ faturamento real (PIX)
 
   // Mapas auxiliares
-  const porDia = new Map(); // dia (AAAA-MM-DD) -> { criadas, pagas }
-  const porQuadra = new Map(); // quadra_id -> { quadra_id, quadra_nome, reservas_pagas, receita_bruta }
+  const porDia = new Map(); // dia (AAAA-MM-DD) -> { criadas, pagas_pix }
+  const porQuadra = new Map(); // quadra_id -> { quadra_id, quadra_nome, reservas_pagas_pix, receita_bruta_pix }
 
   for (const r of reservasList) {
     totalReservas += 1;
-    const status = r.status || "unknown";
+
+    const status = String(r.status || "").toLowerCase().trim();
     const valor = Number(r.preco_total || 0);
     const dia = typeof r.data === "string" ? r.data.slice(0, 10) : null;
 
-    if (status === "paid") {
-      reservasPagas += 1;
-      receitaBruta += valor;
-    } else if (status === "pending") {
+    // contadores gerais (status da reserva)
+    if (status === "pending") {
       reservasPendentes += 1;
     } else if (status === "cancelled" || status === "canceled") {
       reservasCanceladas += 1;
     }
 
-    // por dia – reservas criadas e pagas
+    // ✅ faturamento/“pagas” só se for PIX recebido
+    const pixOk = isPixRecebido(r);
+    if (pixOk) {
+      reservasPagasPix += 1;
+      receitaBrutaPix += valor;
+    }
+
+    // por dia – reservas criadas e pagas via pix
     if (dia) {
       if (!porDia.has(dia)) {
-        porDia.set(dia, { criadas: 0, pagas: 0 });
+        porDia.set(dia, { criadas: 0, pagas_pix: 0 });
       }
       const infoDia = porDia.get(dia);
       infoDia.criadas += 1;
-      if (status === "paid") {
-        infoDia.pagas += 1;
-      }
+      if (pixOk) infoDia.pagas_pix += 1;
     }
 
-    // por quadra – só conta pagas para vendas
+    // por quadra – só conta pagas via pix
     const quadraId = r.quadras ? r.quadras.id : null;
     const quadraNome = buildNomeQuadraDinamico(r.quadras || null);
 
@@ -11935,14 +11858,14 @@ async function buildAdminDashboardOverview(params) {
         porQuadra.set(quadraId, {
           quadra_id: quadraId,
           quadra_nome: quadraNome,
-          reservas_pagas: 0,
-          receita_bruta: 0
+          reservas_pagas_pix: 0,
+          receita_bruta_pix: 0
         });
       }
       const infoQuadra = porQuadra.get(quadraId);
-      if (status === "paid") {
-        infoQuadra.reservas_pagas += 1;
-        infoQuadra.receita_bruta += valor;
+      if (pixOk) {
+        infoQuadra.reservas_pagas_pix += 1;
+        infoQuadra.receita_bruta_pix += valor;
       }
     }
   }
@@ -11953,17 +11876,17 @@ async function buildAdminDashboardOverview(params) {
   const reservasPagasArray = [];
 
   for (const dia of labels) {
-    const info = porDia.get(dia) || { criadas: 0, pagas: 0 };
+    const info = porDia.get(dia) || { criadas: 0, pagas_pix: 0 };
     reservasCriadas.push(info.criadas);
-    reservasPagasArray.push(info.pagas);
+    reservasPagasArray.push(info.pagas_pix);
   }
 
-  // Top quadras – ordena por reservas pagas
+  // Top quadras – agora ordena por faturamento pix (desc)
   const vendasPorQuadra = Array.from(porQuadra.values()).sort(
-    (a, b) => b.reservas_pagas - a.reservas_pagas
+    (a, b) => b.receita_bruta_pix - a.receita_bruta_pix
   );
 
-  // Últimas reservas (até 20)
+  // Últimas reservas (até 20) — mantém como “últimas reservas do sistema”
   const ultimasReservas = reservasList
     .slice()
     .sort((a, b) => {
@@ -11985,33 +11908,36 @@ async function buildAdminDashboardOverview(params) {
       preco_total: Number(r.preco_total || 0),
       quadra_nome: buildNomeQuadraDinamico(r.quadras || null),
       user_cpf: r.user_cpf,
-      phone: r.phone
+      phone: r.phone,
+      origem: r.origem,
+      pago_via_pix: r.pago_via_pix === true
     }));
 
   return {
-    period: {
-      from: fromStr,
-      to: toStr
-    },
+    period: { from: fromStr, to: toStr },
     kpis: {
       total_reservas: totalReservas,
-      reservas_pagas: reservasPagas,
+      reservas_pagas: reservasPagasPix,      // ✅ agora é PIX pago
       reservas_pendentes: reservasPendentes,
       reservas_canceladas: reservasCanceladas,
-      receita_bruta: receitaBruta
+      receita_bruta: receitaBrutaPix        // ✅ agora é PIX recebido
     },
     utilizacao_canal: {
       labels,
       reservas_criadas: reservasCriadas,
-      reservas_pagas: reservasPagasArray
+      reservas_pagas: reservasPagasArray     // ✅ pagas via PIX por dia
     },
-    vendas_por_quadra: vendasPorQuadra,
-    ultimas_reservas: ultimasReservas,
-    reservas_por_quadra_status,
-    quadras_sem_regras,
-
+    // ✅ mantém o nome para não quebrar o frontend, mas agora é baseado em PIX
+    vendas_por_quadra: vendasPorQuadra.map((x) => ({
+      quadra_id: x.quadra_id,
+      quadra_nome: x.quadra_nome,
+      reservas_pagas: x.reservas_pagas_pix,
+      receita_bruta: x.receita_bruta_pix
+    })),
+    ultimas_reservas: ultimasReservas
   };
 }
+
 
 // -----------------------------------------
 // Rota: Dashboard Admin - visão geral
@@ -15616,10 +15542,11 @@ function groupByDay(items, dateField) {
 
 // -----------------------------------------
 // Helper principal: overview financeiro (base)
+// - por padrão, considera SOMENTE PIX (meio_pagamento="pix")
+// - e aplica filtro de status via query (?status=paid|cancelled)
 // -----------------------------------------
 async function buildFinanceiroOverviewBase(params) {
-const { from, to, status, gestorId, quadraId } = params || {};
-
+  const { from, to, status, gestorId, quadraId, meio_pagamento } = params || {};
 
   // Datas padrão: últimos 7 dias
   const hoje = new Date();
@@ -15630,6 +15557,7 @@ const { from, to, status, gestorId, quadraId } = params || {};
     typeof from === "string" && from.length >= 10
       ? from.slice(0, 10)
       : seteDiasAtras.toISOString().slice(0, 10);
+
   const toStr =
     typeof to === "string" && to.length >= 10
       ? to.slice(0, 10)
@@ -15639,7 +15567,10 @@ const { from, to, status, gestorId, quadraId } = params || {};
   const fromDateTime = `${fromStr}T00:00:00`;
   const toDateTime = `${toStr}T23:59:59`;
 
-  // 1) Busca pagamentos no período (somente leitura)
+  // ✅ default: pix
+  const meio = String(meio_pagamento || "pix").toLowerCase().trim();
+
+  // 1) Busca pagamentos no período
   const { data: pagamentos, error: errPag } = await supabase
     .from("pagamentos")
     .select("*")
@@ -15653,29 +15584,37 @@ const { from, to, status, gestorId, quadraId } = params || {};
 
   let pagamentosList = pagamentos || [];
 
-// ✅ aplica filtro por status (paid/cancelled) antes de calcular tudo
-pagamentosList = filtrarPagamentosPorStatus(pagamentosList, status);
+  // ✅ filtra por meio de pagamento (pix por padrão)
+  // (aceita vazio/nulo como pix, pra não quebrar dados antigos)
+  pagamentosList = pagamentosList.filter((p) => {
+    const mp = String(p.meio_pagamento || "").toLowerCase().trim();
+    if (!mp) return meio === "pix";
+    return mp === meio;
+  });
 
-if (pagamentosList.length === 0) {
-  return {
-    period: { from: fromStr, to: toStr },
-    filtros: {
-      gestorId: gestorId || null,
-      quadraId: quadraId || null,
-      status: status || null
-    },
-    kpis: {
-      qtd_pagamentos: 0,
-      receita_bruta: 0,
-      taxa_plataforma: 0,
-      valor_liquido: 0
-    },
-    por_dia: [],
-    por_quadra: [],
-    ultimos_pagamentos: []
-  };
-}
+  // ✅ aplica filtro por status (paid/cancelled) antes de calcular tudo
+  pagamentosList = filtrarPagamentosPorStatus(pagamentosList, status);
 
+  if (pagamentosList.length === 0) {
+    return {
+      period: { from: fromStr, to: toStr },
+      filtros: {
+        gestorId: gestorId || null,
+        quadraId: quadraId || null,
+        status: status || null,
+        meio_pagamento: meio
+      },
+      kpis: {
+        qtd_pagamentos: 0,
+        receita_bruta: 0,
+        taxa_plataforma: 0,
+        valor_liquido: 0
+      },
+      por_dia: { labels: [], receita_bruta: [], valor_liquido: [] },
+      por_quadra: [],
+      ultimos_pagamentos: []
+    };
+  }
 
   // 2) Busca reservas vinculadas a esses pagamentos
   const reservaIds = Array.from(
@@ -15712,9 +15651,7 @@ if (pagamentosList.length === 0) {
   }
 
   const reservasMap = new Map();
-  for (const r of reservasList) {
-    reservasMap.set(r.id, r);
-  }
+  for (const r of reservasList) reservasMap.set(r.id, r);
 
   // 3) Busca quadras dessas reservas
   const quadraIds = Array.from(
@@ -15728,18 +15665,17 @@ if (pagamentosList.length === 0) {
   let quadrasList = [];
   if (quadraIds.length > 0) {
     const { data: quadras, error: errQ } = await supabase
-  .from("quadras")
-  .select(
-    `
-    id,
-    tipo,
-    material,
-    modalidade,
-    gestor_id
-  `
-  )
-  .in("id", quadraIds);
-
+      .from("quadras")
+      .select(
+        `
+        id,
+        tipo,
+        material,
+        modalidade,
+        gestor_id
+      `
+      )
+      .in("id", quadraIds);
 
     if (errQ) {
       console.error("[FINANCEIRO] Erro ao buscar quadras:", errQ);
@@ -15749,11 +15685,9 @@ if (pagamentosList.length === 0) {
   }
 
   const quadrasMap = new Map();
-  for (const q of quadrasList) {
-    quadrasMap.set(q.id, q);
-  }
+  for (const q of quadrasList) quadrasMap.set(q.id, q);
 
-  // 4) Aplica filtros de gestor/quadra, se existirem
+  // 4) Aplica filtros de gestor/quadra
   let filtered = pagamentosList;
 
   if (gestorId || quadraId) {
@@ -15763,12 +15697,8 @@ if (pagamentosList.length === 0) {
       const quadra = quadrasMap.get(reserva.quadra_id);
       if (!quadra) return false;
 
-      if (gestorId && quadra.gestor_id !== gestorId) {
-        return false;
-      }
-      if (quadraId && reserva.quadra_id !== quadraId) {
-        return false;
-      }
+      if (gestorId && quadra.gestor_id !== gestorId) return false;
+      if (quadraId && reserva.quadra_id !== quadraId) return false;
       return true;
     });
   }
@@ -15786,13 +15716,13 @@ if (pagamentosList.length === 0) {
 
   // 6) Agrupamento por dia (created_at)
   const porDiaArray = groupByDay(filtered, "created_at");
-
   const labels = porDiaArray.map((d) => d.dia);
   const valoresBrutos = porDiaArray.map((d) => d.total_bruto);
   const valoresLiquidos = porDiaArray.map((d) => d.valor_liquido);
 
   // 7) Agrupamento por quadra
   const porQuadraMap = new Map();
+
   for (const p of filtered) {
     const reserva = reservasMap.get(p.reserva_id);
     if (!reserva) continue;
@@ -15802,38 +15732,31 @@ if (pagamentosList.length === 0) {
     const key = quadra.id;
     if (!porQuadraMap.has(key)) {
       porQuadraMap.set(key, {
-      quadra_id: quadra.id,
-      quadra_nome: buildNomeQuadraDinamico(quadra),
-      gestor_id: quadra.gestor_id,
-      qtd_pagamentos: 0,
-      receita_bruta: 0,
-      taxa_plataforma: 0,
-      valor_liquido: 0
-    });
+        quadra_id: quadra.id,
+        quadra_nome: buildNomeQuadraDinamico(quadra),
+        gestor_id: quadra.gestor_id,
+        qtd_pagamentos: 0,
+        receita_bruta: 0,
+        taxa_plataforma: 0,
+        valor_liquido: 0
+      });
     }
-    const row = porQuadraMap.get(key);
-    const bruto = Number(p.valor_total || 0);
-    const taxa = Number(p.taxa_plataforma || 0);
-    const liquido = Number(p.valor_liquido_gestor || 0);
 
+    const row = porQuadraMap.get(key);
     row.qtd_pagamentos += 1;
-    row.receita_bruta += bruto;
-    row.taxa_plataforma += taxa;
-    row.valor_liquido += liquido;
+    row.receita_bruta += Number(p.valor_total || 0);
+    row.taxa_plataforma += Number(p.taxa_plataforma || 0);
+    row.valor_liquido += Number(p.valor_liquido_gestor || 0);
   }
 
   const porQuadra = Array.from(porQuadraMap.values()).sort(
     (a, b) => b.receita_bruta - a.receita_bruta
   );
 
-  // 8) Últimos pagamentos (ordenados por created_at desc)
+  // 8) Últimos pagamentos
   const ultimosPagamentos = filtered
     .slice()
-    .sort((a, b) => {
-      const aDate = String(a.created_at || "");
-      const bDate = String(b.created_at || "");
-      return bDate.localeCompare(aDate);
-    })
+    .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")))
     .slice(0, 20)
     .map((p) => {
       const reserva = reservasMap.get(p.reserva_id);
@@ -15849,14 +15772,20 @@ if (pagamentosList.length === 0) {
         hora_reserva: reserva ? reserva.hora : null,
         valor_total: Number(p.valor_total || 0),
         taxa_plataforma: Number(p.taxa_plataforma || 0),
-        valor_liquido_gestor: Number(p.valor_liquido_gestor || 0)
-        // se existirem campos como p.status, p.meio_pagamento, eles vêm junto no objeto p
+        valor_liquido_gestor: Number(p.valor_liquido_gestor || 0),
+        status: p.status || null,
+        meio_pagamento: p.meio_pagamento || null
       };
     });
 
   return {
     period: { from: fromStr, to: toStr },
-    filtros: { gestorId: gestorId || null, quadraId: quadraId || null },
+    filtros: {
+      gestorId: gestorId || null,
+      quadraId: quadraId || null,
+      status: status || null,
+      meio_pagamento: meio
+    },
     kpis: {
       qtd_pagamentos: filtered.length,
       receita_bruta: receitaBruta,
@@ -15872,6 +15801,7 @@ if (pagamentosList.length === 0) {
     ultimos_pagamentos: ultimosPagamentos
   };
 }
+
 
 // -----------------------------------------
 // Rota: Financeiro Admin - overview
