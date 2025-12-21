@@ -8,6 +8,7 @@ console.log("[BOOT] CWD atual:", process.cwd());
 require("dotenv").config();
 const cors = require("cors");
 const express = require("express");
+const axios = require("axios");
 const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
@@ -133,13 +134,25 @@ async function enviarEmail(toEmail, subject, html) {
       html,
     };
 
-    const resp = await axios.post("https://api.resend.com/emails", payload, {
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      timeout: 15000,
-    });
+    const resp = await fetch("https://api.resend.com/emails", {
+  method: "POST",
+  headers: {
+    Authorization: `Bearer ${apiKey}`,
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify(payload),
+});
+
+const text = await resp.text();
+
+if (!resp.ok) {
+  console.error("[EMAIL] Resend respondeu erro:", resp.status, text);
+  return false;
+}
+
+console.log("[EMAIL] Resend enviado com sucesso:", resp.status, text);
+return true;
+
 
     console.log("[EMAIL] Resend enviado com sucesso:", resp.status);
     return true;
