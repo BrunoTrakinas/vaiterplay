@@ -171,11 +171,16 @@ return true;
 
 
 function getFrontendBaseUrl() {
-  return (
-    process.env.FRONTEND_BASE_URL ||
-    "https://vaiterplay.netlify.app/" // ajuste se seu front roda em outra porta
-  );
+  // 1) usa a ENV se existir
+  // 2) se não existir, usa o domínio novo (www)
+  const raw =
+    (process.env.FRONTEND_BASE_URL || "").trim() ||
+    "https://www.vaiterplay.com.br";
+
+  // remove barras finais para evitar "https://...//resetar-senha"
+  return raw.replace(/\/+$/, "");
 }
+
 
 // Middleware: restringe por tipo de usuário (ADMIN, GESTOR etc.)
 function permitirTipos(...tiposPermitidos) {
