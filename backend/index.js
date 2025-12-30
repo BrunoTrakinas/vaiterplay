@@ -323,6 +323,7 @@ console.log("[CONF] FLOW_ID_MEUS_AGENDAMENTOS =", FLOW_ID_MEUS_AGENDAMENTOS);
 // 2. Clientes externos (Supabase / Mercado Pago)
 // -----------------------------------------
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+const supabaseAdmin = supabase; // alias p/ rotas admin (fura RLS quando necessário)
 
 const mpClient = new mercadopago.MercadoPagoConfig({
   accessToken: MERCADOPAGO_ACCESS_TOKEN
