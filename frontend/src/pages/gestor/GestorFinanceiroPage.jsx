@@ -1,3 +1,4 @@
+// src/pages/gestor/GestorFinanceiroPage.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import api from "../../services/api";
 
@@ -15,6 +16,7 @@ function defaultPeriodo30() {
 
 function formatBRL(v) {
   const n = Number(v || 0);
+  if (!Number.isFinite(n)) return "R$ 0,00";
   return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
@@ -22,7 +24,6 @@ export default function GestorFinanceiroPage() {
   const def = useMemo(() => defaultPeriodo30(), []);
   const [inicio, setInicio] = useState(def.inicio);
   const [fim, setFim] = useState(def.fim);
-
   const [status, setStatus] = useState("paid");
 
   const [overview, setOverview] = useState(null);
@@ -38,7 +39,7 @@ export default function GestorFinanceiroPage() {
 
     try {
       const { data } = await api.get("/gestor/financeiro-overview", {
-        params: { from: inicio, to: fim, status }
+        params: { from: inicio, to: fim, status },
       });
 
       setOverview(data || null);
@@ -84,135 +85,176 @@ export default function GestorFinanceiroPage() {
 
   const totalPaginas = Math.max(1, Math.ceil(listaAll.length / limite));
   const paginaSegura = Math.min(Math.max(1, pagina), totalPaginas);
-
-  const lista = listaAll.slice((paginaSegura - 1) * limite, paginaSegura * limite);
+  const lista = listaAll.slice(
+    (paginaSegura - 1) * limite,
+    paginaSegura * limite
+  );
 
   return (
-    <div style={{ padding: 18 }}>
-      <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800 }}>Financeiro (Gestor)</h1>
-      <p style={{ marginTop: 6, opacity: 0.8 }}>
-        Indicadores e últimos pagamentos confirmados no período selecionado.
-      </p>
-
-      <div className="gf-filtros" style={{ marginTop: 14 }}>
-        <div className="gf-filtro-item">
-          <label>Início</label>
-          <input
-            type="date"
-            value={inicio}
-            onChange={(e) => setInicio(e.target.value)}
-          />
+    <div className="page">
+      {/* HEADER (igual padrão Admin) */}
+      <div
+        className="page-header"
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 12,
+          alignItems: "flex-start",
+          flexWrap: "wrap",
+        }}
+      >
+        <div>
+          <h1 className="page-title">Financeiro (Gestor)</h1>
+          <p style={{ marginTop: 6, color: "#666", fontSize: 13 }}>
+            Indicadores e últimos pagamentos confirmados no período selecionado.
+          </p>
         </div>
 
-        <div className="gf-filtro-item">
-          <label>Fim</label>
-          <input
-            type="date"
-            value={fim}
-            onChange={(e) => setFim(e.target.value)}
-          />
-        </div>
-
-        <div className="gf-filtro-item">
-          <label>Status</label>
-          <select value={status} onChange={(e) => setStatus(e.target.value)}>
-            <option value="paid">Pago</option>
-            <option value="canceled">Cancelado</option>
-            <option value="cancelled">Cancelado (variação)</option>
-          </select>
-        </div>
-
-        <div className="gf-actions">
-          <button className="gf-btn gf-btn-primary" onClick={aplicarFiltro}>
-            Aplicar
-          </button>
-          <button className="gf-btn" onClick={limparPeriodo}>
-            Últimos 30 dias
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <button
+            className="btn btn-outline-secondary"
+            onClick={carregarOverview}
+            disabled={loading}
+            type="button"
+          >
+            {loading ? "Carregando..." : "Recarregar"}
           </button>
         </div>
       </div>
 
-      {erro ? <div className="gf-error">{erro}</div> : null}
+      {/* FILTROS (card) */}
+      <div className="vt-card" style={{ padding: 14, marginTop: 12 }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr 1fr auto",
+            gap: 12,
+            alignItems: "end",
+          }}
+        >
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <label style={{ fontWeight: 700, fontSize: 13 }}>Início</label>
+            <input
+              type="date"
+              value={inicio}
+              onChange={(e) => setInicio(e.target.value)}
+              className="form-control"
+            />
+          </div>
 
-      <div className="gf-cards">
-        <div className="gf-card">
-          <div className="gf-card-title">Receita bruta</div>
-          <div className="gf-card-value">
-            {loading ? "..." : formatBRL(kpis?.receita_bruta)}
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <label style={{ fontWeight: 700, fontSize: 13 }}>Fim</label>
+            <input
+              type="date"
+              value={fim}
+              onChange={(e) => setFim(e.target.value)}
+              className="form-control"
+            />
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <label style={{ fontWeight: 700, fontSize: 13 }}>Status</label>
+            <select
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
+              className="form-control"
+            >
+              <option value="paid">Pago</option>
+              <option value="canceled">Cancelado</option>
+              <option value="cancelled">Cancelado (variação)</option>
+            </select>
+          </div>
+
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <button
+              className="btn btn-primary"
+              onClick={aplicarFiltro}
+              disabled={loading}
+              type="button"
+            >
+              Aplicar
+            </button>
+            <button
+              className="btn btn-outline-secondary"
+              onClick={limparPeriodo}
+              disabled={loading}
+              type="button"
+            >
+              Últimos 30 dias
+            </button>
           </div>
         </div>
 
-        <div className="gf-card">
-          <div className="gf-card-title">Taxa plataforma</div>
-          <div className="gf-card-value">
-            {loading ? "..." : formatBRL(kpis?.taxa_plataforma)}
+        {erro ? (
+          <div style={{ marginTop: 10, color: "#b00020", fontSize: 13 }}>
+            {erro}
           </div>
-        </div>
+        ) : null}
+      </div>
 
-        <div className="gf-card">
-          <div className="gf-card-title">Valor líquido</div>
-          <div className="gf-card-value">
-            {loading ? "..." : formatBRL(kpis?.valor_liquido)}
+      {/* KPIs (cards) */}
+      <div className="vt-card" style={{ padding: 14, marginTop: 12 }}>
+        <h3 style={{ margin: 0, fontSize: 16 }}>Indicadores</h3>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+            gap: 10,
+            marginTop: 12,
+          }}
+        >
+          <div className="vt-card" style={{ padding: 12 }}>
+            <div style={{ fontSize: 12, color: "#666" }}>Receita bruta</div>
+            <div style={{ fontSize: 18, fontWeight: 800 }}>
+              {loading ? "..." : formatBRL(kpis?.receita_bruta)}
+            </div>
           </div>
-        </div>
 
-        <div className="gf-card">
-          <div className="gf-card-title">Qtd pagamentos</div>
-          <div className="gf-card-value">
-            {loading ? "..." : kpis?.qtd_pagamentos ?? 0}
+          <div className="vt-card" style={{ padding: 12 }}>
+            <div style={{ fontSize: 12, color: "#666" }}>Taxa plataforma</div>
+            <div style={{ fontSize: 18, fontWeight: 800 }}>
+              {loading ? "..." : formatBRL(kpis?.taxa_plataforma)}
+            </div>
+          </div>
+
+          <div className="vt-card" style={{ padding: 12 }}>
+            <div style={{ fontSize: 12, color: "#666" }}>Valor líquido</div>
+            <div style={{ fontSize: 18, fontWeight: 800 }}>
+              {loading ? "..." : formatBRL(kpis?.valor_liquido)}
+            </div>
+          </div>
+
+          <div className="vt-card" style={{ padding: 12 }}>
+            <div style={{ fontSize: 12, color: "#666" }}>Qtd pagamentos</div>
+            <div style={{ fontSize: 18, fontWeight: 800 }}>
+              {loading ? "..." : kpis?.qtd_pagamentos ?? 0}
+            </div>
           </div>
         </div>
       </div>
 
-      <div style={{ marginTop: 18 }}>
-        <h3 style={{ margin: "10px 0" }}>Últimos pagamentos</h3>
+      {/* ÚLTIMOS PAGAMENTOS (card) */}
+      <div className="vt-card" style={{ padding: 14, marginTop: 12 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+            flexWrap: "wrap",
+          }}
+        >
+          <h3 style={{ margin: 0, fontSize: 16 }}>Últimos pagamentos</h3>
 
-        <div className="gf-table">
-          <div className="gf-row gf-head">
-            <div>Data</div>
-            <div>Valor</div>
-            <div>Status</div>
-          </div>
-
-          {loading ? (
-            <div className="gf-row gf-empty">Carregando...</div>
-          ) : lista.length === 0 ? (
-            <div className="gf-row gf-empty">Nenhum pagamento no período.</div>
-          ) : (
-            lista.map((p) => (
-              <div className="gf-row" key={p.id}>
-                <div>{String(p.created_at || "").slice(0, 10) || "-"}</div>
-                <div>{formatBRL(p.valor_total)}</div>
-                <div>{String(p.status || "-")}</div>
-              </div>
-            ))
-          )}
-        </div>
-
-        <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 12 }}>
-          <button
-            className="gf-btn"
-            disabled={paginaSegura <= 1}
-            onClick={() => setPagina((x) => Math.max(1, x - 1))}
-          >
-            Anterior
-          </button>
-
-          <div style={{ opacity: 0.8 }}>
-            Página {paginaSegura} / {totalPaginas}
-          </div>
-
-          <button
-            className="gf-btn"
-            disabled={paginaSegura >= totalPaginas}
-            onClick={() => setPagina((x) => Math.min(totalPaginas, x + 1))}
-          >
-            Próxima
-          </button>
-
-          <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
-            <div style={{ opacity: 0.8 }}>Itens/página:</div>
-            <select value={limite} onChange={(e) => setLimite(Number(e.target.value))}>
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <div style={{ fontSize: 13, color: "#666" }}>Itens/página:</div>
+            <select
+              value={limite}
+              onChange={(e) => setLimite(Number(e.target.value))}
+              className="form-control"
+              style={{ width: 110 }}
+            >
               <option value={10}>10</option>
               <option value={20}>20</option>
               <option value={50}>50</option>
@@ -220,7 +262,107 @@ export default function GestorFinanceiroPage() {
             </select>
           </div>
         </div>
+
+        <div style={{ marginTop: 12 }}>
+          {/* Cabeçalho */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "160px 160px 1fr",
+              gap: 10,
+              padding: "10px 12px",
+              borderRadius: 10,
+              background: "#f9f9f9",
+              border: "1px solid #eee",
+              fontSize: 12,
+              fontWeight: 700,
+              color: "#666",
+            }}
+          >
+            <div>Data</div>
+            <div>Valor</div>
+            <div>Status</div>
+          </div>
+
+          {/* Linhas */}
+          <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
+            {loading ? (
+              <div style={{ padding: 12, color: "#666" }}>Carregando...</div>
+            ) : lista.length === 0 ? (
+              <div style={{ padding: 12, color: "#666" }}>
+                Nenhum pagamento no período.
+              </div>
+            ) : (
+              lista.map((p) => (
+                <div
+                  key={p.id}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "160px 160px 1fr",
+                    gap: 10,
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    border: "1px solid #eee",
+                    background: "#fff",
+                    alignItems: "center",
+                  }}
+                >
+                  <div>{String(p.created_at || "").slice(0, 10) || "-"}</div>
+                  <div>{formatBRL(p.valor_total)}</div>
+                  <div>{String(p.status || "-")}</div>
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Paginação */}
+          <div
+            style={{
+              display: "flex",
+              gap: 10,
+              alignItems: "center",
+              marginTop: 12,
+              flexWrap: "wrap",
+            }}
+          >
+            <button
+              className="btn btn-outline-secondary"
+              disabled={paginaSegura <= 1}
+              onClick={() => setPagina((x) => Math.max(1, x - 1))}
+              type="button"
+            >
+              Anterior
+            </button>
+
+            <div style={{ color: "#666", fontSize: 13 }}>
+              Página {paginaSegura} / {totalPaginas}
+            </div>
+
+            <button
+              className="btn btn-outline-secondary"
+              disabled={paginaSegura >= totalPaginas}
+              onClick={() => setPagina((x) => Math.min(totalPaginas, x + 1))}
+              type="button"
+            >
+              Próxima
+            </button>
+          </div>
+        </div>
       </div>
+
+      {/* Responsivo simples */}
+      <style>{`
+        @media (max-width: 980px) {
+          .vt-card > div[style*="gridTemplateColumns: repeat(4"] {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          }
+        }
+        @media (max-width: 700px) {
+          .vt-card > div[style*="gridTemplateColumns: repeat(2"] {
+            grid-template-columns: 1fr !important;
+          }
+        }
+      `}</style>
     </div>
   );
 }
