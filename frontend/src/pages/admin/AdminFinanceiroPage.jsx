@@ -1,5 +1,7 @@
+// src/pages/admin/AdminFinanceiroPage.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import api from "../../services/api";
+import "./adminfinanceiro.css";
 
 function toISODate(d) {
   const pad = (n) => String(n).padStart(2, "0");
@@ -110,11 +112,17 @@ export default function AdminFinanceiroPage() {
   const resumoNorm = useMemo(() => {
     if (!resumo) return null;
 
-    // totais principais (aceita nomes diferentes)
     const qtd_pagamentos = pickNum(resumo, ["qtd_pagamentos", "qtdPagamentos"], 0);
     const total_bruto = pickNum(
       resumo,
-      ["total_bruto", "totalBruto", "receita_bruta", "receitaBruta", "valor_total", "valorTotal"],
+      [
+        "total_bruto",
+        "totalBruto",
+        "receita_bruta",
+        "receitaBruta",
+        "valor_total",
+        "valorTotal",
+      ],
       0
     );
     const total_taxa = pickNum(
@@ -124,38 +132,50 @@ export default function AdminFinanceiroPage() {
     );
     const total_liquido = pickNum(
       resumo,
-      ["total_liquido", "totalLiquido", "valor_liquido", "valorLiquido", "valor_liquido_gestor", "valorLiquidoGestor"],
+      [
+        "total_liquido",
+        "totalLiquido",
+        "valor_liquido",
+        "valorLiquido",
+        "valor_liquido_gestor",
+        "valorLiquidoGestor",
+      ],
       0
     );
 
-    // campos que às vezes vêm como { qtd, valor }
     const pendentesObj = pickObj(resumo, ["pendentes_repasse", "pendentesRepasse"]);
     const repPendObj = pickObj(resumo, ["repasses_pendentes", "repassesPendentes"]);
     const repPagoObj = pickObj(resumo, ["repasses_pagos", "repassesPagos"]);
 
-    const pendentes_repasse_qtd = typeof pendentesObj === "object"
-      ? pickNum(pendentesObj, ["qtd", "quantidade", "count"], 0)
-      : safeNum(pendentesObj);
+    const pendentes_repasse_qtd =
+      typeof pendentesObj === "object"
+        ? pickNum(pendentesObj, ["qtd", "quantidade", "count"], 0)
+        : safeNum(pendentesObj);
 
-    const pendentes_repasse_valor = typeof pendentesObj === "object"
-      ? pickNum(pendentesObj, ["valor", "total", "valor_total", "valorTotal"], 0)
-      : 0;
+    const pendentes_repasse_valor =
+      typeof pendentesObj === "object"
+        ? pickNum(pendentesObj, ["valor", "total", "valor_total", "valorTotal"], 0)
+        : 0;
 
-    const repasses_pendentes_qtd = typeof repPendObj === "object"
-      ? pickNum(repPendObj, ["qtd", "quantidade", "count"], 0)
-      : safeNum(repPendObj);
+    const repasses_pendentes_qtd =
+      typeof repPendObj === "object"
+        ? pickNum(repPendObj, ["qtd", "quantidade", "count"], 0)
+        : safeNum(repPendObj);
 
-    const repasses_pendentes_valor = typeof repPendObj === "object"
-      ? pickNum(repPendObj, ["valor", "total", "valor_total", "valorTotal"], 0)
-      : 0;
+    const repasses_pendentes_valor =
+      typeof repPendObj === "object"
+        ? pickNum(repPendObj, ["valor", "total", "valor_total", "valorTotal"], 0)
+        : 0;
 
-    const repasses_pagos_qtd = typeof repPagoObj === "object"
-      ? pickNum(repPagoObj, ["qtd", "quantidade", "count"], 0)
-      : safeNum(repPagoObj);
+    const repasses_pagos_qtd =
+      typeof repPagoObj === "object"
+        ? pickNum(repPagoObj, ["qtd", "quantidade", "count"], 0)
+        : safeNum(repPagoObj);
 
-    const repasses_pagos_valor = typeof repPagoObj === "object"
-      ? pickNum(repPagoObj, ["valor", "total", "valor_total", "valorTotal"], 0)
-      : 0;
+    const repasses_pagos_valor =
+      typeof repPagoObj === "object"
+        ? pickNum(repPagoObj, ["valor", "total", "valor_total", "valorTotal"], 0)
+        : 0;
 
     return {
       periodo: resumo.periodo || { inicio: from, fim: to },
@@ -180,39 +200,36 @@ export default function AdminFinanceiroPage() {
     if (!k) return null;
     return {
       qtd_pagamentos: pickNum(k, ["qtd_pagamentos", "qtdPagamentos"], 0),
-      receita_bruta: pickNum(k, ["receita_bruta", "receitaBruta", "total_bruto", "totalBruto"], 0),
-      taxa_plataforma: pickNum(k, ["taxa_plataforma", "taxaPlataforma", "total_taxa", "totalTaxa"], 0),
-      valor_liquido: pickNum(k, ["valor_liquido", "valorLiquido", "total_liquido", "totalLiquido"], 0),
+      receita_bruta: pickNum(
+        k,
+        ["receita_bruta", "receitaBruta", "total_bruto", "totalBruto"],
+        0
+      ),
+      taxa_plataforma: pickNum(
+        k,
+        ["taxa_plataforma", "taxaPlataforma", "total_taxa", "totalTaxa"],
+        0
+      ),
+      valor_liquido: pickNum(
+        k,
+        ["valor_liquido", "valorLiquido", "total_liquido", "totalLiquido"],
+        0
+      ),
     };
   }, [overview]);
 
   return (
-    <div className="page">
-      <div
-        className="page-header"
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          gap: 12,
-          alignItems: "flex-start",
-          flexWrap: "wrap",
-        }}
-      >
+    <div className="page af-page">
+      {/* HEADER */}
+      <div className="page-header af-header">
         <div>
           <h1 className="page-title">Financeiro (Admin)</h1>
-          <p style={{ marginTop: 6, color: "#666", fontSize: 13 }}>
+          <p className="af-subtitle">
             Visão global do período + overview (opcional) por gestor.
           </p>
         </div>
 
-        <div
-          style={{
-            display: "flex",
-            gap: 10,
-            alignItems: "center",
-            flexWrap: "wrap",
-          }}
-        >
+        <div className="af-actions">
           <button
             className="btn btn-outline-secondary"
             onClick={carregarTudo}
@@ -224,20 +241,11 @@ export default function AdminFinanceiroPage() {
         </div>
       </div>
 
-      {/* filtros */}
-      <div className="vt-card" style={{ padding: 14, marginTop: 12 }}>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr 2fr",
-            gap: 12,
-          }}
-        >
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <label
-              htmlFor="admin_fin_from"
-              style={{ fontWeight: 700, fontSize: 13 }}
-            >
+      {/* FILTROS */}
+      <div className="vt-card af-card">
+        <div className="af-filters">
+          <div className="af-field">
+            <label htmlFor="admin_fin_from" className="af-label">
               De
             </label>
             <input
@@ -250,11 +258,8 @@ export default function AdminFinanceiroPage() {
             />
           </div>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <label
-              htmlFor="admin_fin_to"
-              style={{ fontWeight: 700, fontSize: 13 }}
-            >
+          <div className="af-field">
+            <label htmlFor="admin_fin_to" className="af-label">
               Até
             </label>
             <input
@@ -267,11 +272,8 @@ export default function AdminFinanceiroPage() {
             />
           </div>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <label
-              htmlFor="admin_fin_gestor"
-              style={{ fontWeight: 700, fontSize: 13 }}
-            >
+          <div className="af-field">
+            <label htmlFor="admin_fin_gestor" className="af-label">
               Filtrar por gestor (opcional)
             </label>
             <select
@@ -291,86 +293,55 @@ export default function AdminFinanceiroPage() {
           </div>
         </div>
 
-        {erro ? (
-          <div style={{ marginTop: 10, color: "#b00020", fontSize: 13 }}>
-            {erro}
-          </div>
-        ) : null}
+        {erro ? <div className="af-error">{erro}</div> : null}
       </div>
 
-      {/* resumo */}
-      <div className="vt-card" style={{ padding: 14, marginTop: 12 }}>
-        <h3 style={{ margin: 0, fontSize: 16 }}>Resumo global</h3>
-        <p style={{ marginTop: 6, color: "#666", fontSize: 13 }}>
-          Baseado nos pagamentos do período (status:{" "}
-          <b>{resumoNorm?.status || "paid"}</b>).
-        </p>
+      {/* RESUMO */}
+      <div className="vt-card af-card">
+        <div className="af-block-head">
+          <h3 className="af-section-title">Resumo global</h3>
+          <p className="af-muted">
+            Baseado nos pagamentos do período (status:{" "}
+            <b>{resumoNorm?.status || "paid"}</b>).
+          </p>
+        </div>
 
         {!resumoNorm ? (
-          <div style={{ marginTop: 10, color: "#666" }}>
-            {loading ? "Carregando..." : "Sem dados."}
-          </div>
+          <div className="af-empty">{loading ? "Carregando..." : "Sem dados."}</div>
         ) : (
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-              gap: 10,
-              marginTop: 12,
-            }}
-          >
-            <div className="vt-card" style={{ padding: 12 }}>
-              <div style={{ fontSize: 12, color: "#666" }}>Qtd. pagamentos</div>
-              <div style={{ fontSize: 18, fontWeight: 800 }}>
-                {resumoNorm.qtd_pagamentos}
-              </div>
+          <div className="af-kpis af-kpis-3">
+            <div className="af-kpi">
+              <div className="af-kpi-label">Qtd. pagamentos</div>
+              <div className="af-kpi-value">{resumoNorm.qtd_pagamentos}</div>
             </div>
 
-            <div className="vt-card" style={{ padding: 12 }}>
-              <div style={{ fontSize: 12, color: "#666" }}>Total bruto</div>
-              <div style={{ fontSize: 18, fontWeight: 800 }}>
-                {formatBRL(resumoNorm.total_bruto)}
-              </div>
+            <div className="af-kpi">
+              <div className="af-kpi-label">Total bruto</div>
+              <div className="af-kpi-value">{formatBRL(resumoNorm.total_bruto)}</div>
             </div>
 
-            <div className="vt-card" style={{ padding: 12 }}>
-              <div style={{ fontSize: 12, color: "#666" }}>
-                Total líquido (gestores)
-              </div>
-              <div style={{ fontSize: 18, fontWeight: 800 }}>
-                {formatBRL(resumoNorm.total_liquido)}
-              </div>
+            <div className="af-kpi">
+              <div className="af-kpi-label">Total líquido (gestores)</div>
+              <div className="af-kpi-value">{formatBRL(resumoNorm.total_liquido)}</div>
             </div>
 
-            <div className="vt-card" style={{ padding: 12 }}>
-              <div style={{ fontSize: 12, color: "#666" }}>
-                Total taxa (plataforma)
-              </div>
-              <div style={{ fontSize: 18, fontWeight: 800 }}>
-                {formatBRL(resumoNorm.total_taxa)}
-              </div>
+            <div className="af-kpi">
+              <div className="af-kpi-label">Total taxa (plataforma)</div>
+              <div className="af-kpi-value">{formatBRL(resumoNorm.total_taxa)}</div>
             </div>
 
-            <div className="vt-card" style={{ padding: 12 }}>
-              <div style={{ fontSize: 12, color: "#666" }}>
-                Pendentes de repasse
-              </div>
-              <div style={{ fontSize: 18, fontWeight: 800 }}>
-                {resumoNorm.pendentes_repasse_qtd}
-              </div>
-              <div style={{ marginTop: 6, fontSize: 12, color: "#666" }}>
-                {formatBRL(resumoNorm.pendentes_repasse_valor)}
-              </div>
+            <div className="af-kpi">
+              <div className="af-kpi-label">Pendentes de repasse</div>
+              <div className="af-kpi-value">{resumoNorm.pendentes_repasse_qtd}</div>
+              <div className="af-kpi-sub">{formatBRL(resumoNorm.pendentes_repasse_valor)}</div>
             </div>
 
-            <div className="vt-card" style={{ padding: 12 }}>
-              <div style={{ fontSize: 12, color: "#666" }}>
-                Repasses (pendentes / pagos)
-              </div>
-              <div style={{ fontSize: 18, fontWeight: 800 }}>
+            <div className="af-kpi">
+              <div className="af-kpi-label">Repasses (pendentes / pagos)</div>
+              <div className="af-kpi-value">
                 {resumoNorm.repasses_pendentes_qtd} / {resumoNorm.repasses_pagos_qtd}
               </div>
-              <div style={{ marginTop: 6, fontSize: 12, color: "#666" }}>
+              <div className="af-kpi-sub">
                 {formatBRL(resumoNorm.repasses_pendentes_valor)} /{" "}
                 {formatBRL(resumoNorm.repasses_pagos_valor)}
               </div>
@@ -379,55 +350,34 @@ export default function AdminFinanceiroPage() {
         )}
       </div>
 
-      {/* overview */}
-      <div className="vt-card" style={{ padding: 14, marginTop: 12 }}>
-        <h3 style={{ margin: 0, fontSize: 16 }}>
+      {/* OVERVIEW */}
+      <div className="vt-card af-card">
+        <h3 className="af-section-title">
           Overview {gestorId ? "(por gestor)" : "(geral)"}
         </h3>
 
         {!overviewKpis ? (
-          <div style={{ marginTop: 10, color: "#666" }}>
-            {loading ? "Carregando..." : "Sem dados."}
-          </div>
+          <div className="af-empty">{loading ? "Carregando..." : "Sem dados."}</div>
         ) : (
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-              gap: 10,
-              marginTop: 12,
-            }}
-          >
-            <div className="vt-card" style={{ padding: 12 }}>
-              <div style={{ fontSize: 12, color: "#666" }}>Qtd. pagamentos</div>
-              <div style={{ fontSize: 18, fontWeight: 800 }}>
-                {overviewKpis.qtd_pagamentos}
-              </div>
+          <div className="af-kpis af-kpis-4">
+            <div className="af-kpi">
+              <div className="af-kpi-label">Qtd. pagamentos</div>
+              <div className="af-kpi-value">{overviewKpis.qtd_pagamentos}</div>
             </div>
 
-            <div className="vt-card" style={{ padding: 12 }}>
-              <div style={{ fontSize: 12, color: "#666" }}>Total bruto</div>
-              <div style={{ fontSize: 18, fontWeight: 800 }}>
-                {formatBRL(overviewKpis.receita_bruta)}
-              </div>
+            <div className="af-kpi">
+              <div className="af-kpi-label">Total bruto</div>
+              <div className="af-kpi-value">{formatBRL(overviewKpis.receita_bruta)}</div>
             </div>
 
-            <div className="vt-card" style={{ padding: 12 }}>
-              <div style={{ fontSize: 12, color: "#666" }}>
-                Total taxa (plataforma)
-              </div>
-              <div style={{ fontSize: 18, fontWeight: 800 }}>
-                {formatBRL(overviewKpis.taxa_plataforma)}
-              </div>
+            <div className="af-kpi">
+              <div className="af-kpi-label">Total taxa (plataforma)</div>
+              <div className="af-kpi-value">{formatBRL(overviewKpis.taxa_plataforma)}</div>
             </div>
 
-            <div className="vt-card" style={{ padding: 12 }}>
-              <div style={{ fontSize: 12, color: "#666" }}>
-                Total líquido (gestores)
-              </div>
-              <div style={{ fontSize: 18, fontWeight: 800 }}>
-                {formatBRL(overviewKpis.valor_liquido)}
-              </div>
+            <div className="af-kpi">
+              <div className="af-kpi-label">Total líquido (gestores)</div>
+              <div className="af-kpi-value">{formatBRL(overviewKpis.valor_liquido)}</div>
             </div>
           </div>
         )}

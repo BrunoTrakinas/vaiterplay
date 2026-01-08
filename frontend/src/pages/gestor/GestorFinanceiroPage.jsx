@@ -1,6 +1,7 @@
 // src/pages/gestor/GestorFinanceiroPage.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import api from "../../services/api";
+import "./gestorfinanceiro.css";
 
 function toISODate(d) {
   const pad = (n) => String(n).padStart(2, "0");
@@ -32,6 +33,23 @@ export default function GestorFinanceiroPage() {
 
   const [pagina, setPagina] = useState(1);
   const [limite, setLimite] = useState(20);
+
+  // --- VISUAL ONLY (não altera regra/dados) ---
+  function statusLabel(s) {
+    const v = String(s || "").toLowerCase();
+    if (v === "paid") return "Pago";
+    if (v === "canceled" || v === "cancelled") return "Cancelado";
+    return v || "-";
+  }
+
+  function statusClass(s) {
+    const v = String(s || "").toLowerCase();
+    if (v === "paid") return "paid";
+    if (v === "canceled" || v === "cancelled") return "canceled";
+    // fallback visual neutro
+    return "pending";
+  }
+  // -------------------------------------------
 
   async function carregarOverview() {
     setLoading(true);
@@ -91,21 +109,12 @@ export default function GestorFinanceiroPage() {
   );
 
   return (
-    <div className="page">
-      {/* HEADER (igual padrão Admin) */}
-      <div
-        className="page-header"
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          gap: 12,
-          alignItems: "flex-start",
-          flexWrap: "wrap",
-        }}
-      >
+    <div className="page gf-page">
+      {/* HEADER */}
+      <div className="page-header gf-header">
         <div>
           <h1 className="page-title">Financeiro (Gestor)</h1>
-          <p style={{ marginTop: 6, color: "#666", fontSize: 13 }}>
+          <p className="gf-subtitle">
             Indicadores e últimos pagamentos confirmados no período selecionado.
           </p>
         </div>
@@ -122,18 +131,11 @@ export default function GestorFinanceiroPage() {
         </div>
       </div>
 
-      {/* FILTROS (card) */}
-      <div className="vt-card" style={{ padding: 14, marginTop: 12 }}>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr 1fr auto",
-            gap: 12,
-            alignItems: "end",
-          }}
-        >
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <label style={{ fontWeight: 700, fontSize: 13 }}>Início</label>
+      {/* FILTROS */}
+      <div className="vt-card gf-card">
+        <div className="gf-filters">
+          <div className="gf-field">
+            <label className="gf-label">Início</label>
             <input
               type="date"
               value={inicio}
@@ -142,8 +144,8 @@ export default function GestorFinanceiroPage() {
             />
           </div>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <label style={{ fontWeight: 700, fontSize: 13 }}>Fim</label>
+          <div className="gf-field">
+            <label className="gf-label">Fim</label>
             <input
               type="date"
               value={fim}
@@ -152,8 +154,8 @@ export default function GestorFinanceiroPage() {
             />
           </div>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <label style={{ fontWeight: 700, fontSize: 13 }}>Status</label>
+          <div className="gf-field">
+            <label className="gf-label">Status</label>
             <select
               value={status}
               onChange={(e) => setStatus(e.target.value)}
@@ -165,7 +167,7 @@ export default function GestorFinanceiroPage() {
             </select>
           </div>
 
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <div className="gf-actions">
             <button
               className="btn btn-primary"
               onClick={aplicarFiltro}
@@ -185,70 +187,51 @@ export default function GestorFinanceiroPage() {
           </div>
         </div>
 
-        {erro ? (
-          <div style={{ marginTop: 10, color: "#b00020", fontSize: 13 }}>
-            {erro}
-          </div>
-        ) : null}
+        {erro ? <div className="gf-error">{erro}</div> : null}
       </div>
 
-      {/* KPIs (cards) */}
-      <div className="vt-card" style={{ padding: 14, marginTop: 12 }}>
-        <h3 style={{ margin: 0, fontSize: 16 }}>Indicadores</h3>
+      {/* KPIs */}
+      <div className="vt-card gf-card">
+        <h3 className="gf-section-title">Indicadores</h3>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-            gap: 10,
-            marginTop: 12,
-          }}
-        >
-          <div className="vt-card" style={{ padding: 12 }}>
-            <div style={{ fontSize: 12, color: "#666" }}>Receita bruta</div>
-            <div style={{ fontSize: 18, fontWeight: 800 }}>
+        <div className="gf-kpis">
+          <div className="gf-kpi">
+            <div className="gf-kpi-label">Receita bruta</div>
+            <div className="gf-kpi-value">
               {loading ? "..." : formatBRL(kpis?.receita_bruta)}
             </div>
           </div>
 
-          <div className="vt-card" style={{ padding: 12 }}>
-            <div style={{ fontSize: 12, color: "#666" }}>Taxa plataforma</div>
-            <div style={{ fontSize: 18, fontWeight: 800 }}>
+          <div className="gf-kpi">
+            <div className="gf-kpi-label">Taxa plataforma</div>
+            <div className="gf-kpi-value">
               {loading ? "..." : formatBRL(kpis?.taxa_plataforma)}
             </div>
           </div>
 
-          <div className="vt-card" style={{ padding: 12 }}>
-            <div style={{ fontSize: 12, color: "#666" }}>Valor líquido</div>
-            <div style={{ fontSize: 18, fontWeight: 800 }}>
+          <div className="gf-kpi">
+            <div className="gf-kpi-label">Valor líquido</div>
+            <div className="gf-kpi-value">
               {loading ? "..." : formatBRL(kpis?.valor_liquido)}
             </div>
           </div>
 
-          <div className="vt-card" style={{ padding: 12 }}>
-            <div style={{ fontSize: 12, color: "#666" }}>Qtd pagamentos</div>
-            <div style={{ fontSize: 18, fontWeight: 800 }}>
+          <div className="gf-kpi">
+            <div className="gf-kpi-label">Qtd pagamentos</div>
+            <div className="gf-kpi-value">
               {loading ? "..." : kpis?.qtd_pagamentos ?? 0}
             </div>
           </div>
         </div>
       </div>
 
-      {/* ÚLTIMOS PAGAMENTOS (card) */}
-      <div className="vt-card" style={{ padding: 14, marginTop: 12 }}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 12,
-            flexWrap: "wrap",
-          }}
-        >
-          <h3 style={{ margin: 0, fontSize: 16 }}>Últimos pagamentos</h3>
+      {/* ÚLTIMOS PAGAMENTOS */}
+      <div className="vt-card gf-card">
+        <div className="gf-table-top">
+          <h3 className="gf-section-title">Últimos pagamentos</h3>
 
-          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-            <div style={{ fontSize: 13, color: "#666" }}>Itens/página:</div>
+          <div className="gf-table-controls">
+            <div className="gf-muted">Itens/página:</div>
             <select
               value={limite}
               onChange={(e) => setLimite(Number(e.target.value))}
@@ -265,27 +248,14 @@ export default function GestorFinanceiroPage() {
 
         <div style={{ marginTop: 12 }}>
           {/* Cabeçalho */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "160px 160px 1fr",
-              gap: 10,
-              padding: "10px 12px",
-              borderRadius: 10,
-              background: "#f9f9f9",
-              border: "1px solid #eee",
-              fontSize: 12,
-              fontWeight: 700,
-              color: "#666",
-            }}
-          >
+          <div className="gf-table-head">
             <div>Data</div>
             <div>Valor</div>
             <div>Status</div>
           </div>
 
           {/* Linhas */}
-          <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
+          <div className="gf-table-rows">
             {loading ? (
               <div style={{ padding: 12, color: "#666" }}>Carregando...</div>
             ) : lista.length === 0 ? (
@@ -293,38 +263,26 @@ export default function GestorFinanceiroPage() {
                 Nenhum pagamento no período.
               </div>
             ) : (
-              lista.map((p) => (
-                <div
-                  key={p.id}
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "160px 160px 1fr",
-                    gap: 10,
-                    padding: "10px 12px",
-                    borderRadius: 10,
-                    border: "1px solid #eee",
-                    background: "#fff",
-                    alignItems: "center",
-                  }}
-                >
-                  <div>{String(p.created_at || "").slice(0, 10) || "-"}</div>
-                  <div>{formatBRL(p.valor_total)}</div>
-                  <div>{String(p.status || "-")}</div>
-                </div>
-              ))
+              lista.map((p) => {
+                const cls = statusClass(p.status);
+                return (
+                  <div key={p.id} className="gf-row">
+                    <div>{String(p.created_at || "").slice(0, 10) || "-"}</div>
+                    <div>{formatBRL(p.valor_total)}</div>
+                    <div>
+                      <span className={`gf-badge gf-badge-${cls}`}>
+                        <span className={`gf-dot gf-dot-${cls}`} />
+                        {statusLabel(p.status)}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })
             )}
           </div>
 
           {/* Paginação */}
-          <div
-            style={{
-              display: "flex",
-              gap: 10,
-              alignItems: "center",
-              marginTop: 12,
-              flexWrap: "wrap",
-            }}
-          >
+          <div className="gf-pagination">
             <button
               className="btn btn-outline-secondary"
               disabled={paginaSegura <= 1}
@@ -334,7 +292,7 @@ export default function GestorFinanceiroPage() {
               Anterior
             </button>
 
-            <div style={{ color: "#666", fontSize: 13 }}>
+            <div className="gf-muted">
               Página {paginaSegura} / {totalPaginas}
             </div>
 
@@ -349,20 +307,6 @@ export default function GestorFinanceiroPage() {
           </div>
         </div>
       </div>
-
-      {/* Responsivo simples */}
-      <style>{`
-        @media (max-width: 980px) {
-          .vt-card > div[style*="gridTemplateColumns: repeat(4"] {
-            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-          }
-        }
-        @media (max-width: 700px) {
-          .vt-card > div[style*="gridTemplateColumns: repeat(2"] {
-            grid-template-columns: 1fr !important;
-          }
-        }
-      `}</style>
     </div>
   );
 }

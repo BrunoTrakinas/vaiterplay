@@ -1,0 +1,145 @@
+/* src/pages/admin/adminfinanceiro.css */
+
+.af-page {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.af-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.af-subtitle {
+  margin-top: 6px;
+  color: #666;
+  font-size: 13px;
+}
+
+.af-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.af-card {
+  padding: 14px;
+}
+
+.af-section-title {
+  margin: 0;
+  font-size: 16px;
+}
+
+.af-block-head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.af-muted {
+  margin: 0;
+  color: #666;
+  font-size: 13px;
+}
+
+.af-empty {
+  margin-top: 10px;
+  color: #666;
+}
+
+.af-error {
+  margin-top: 10px;
+  color: #b00020;
+  font-size: 13px;
+}
+
+/* filtros */
+.af-filters {
+  display: grid;
+  grid-template-columns: 1fr 1fr 2fr;
+  gap: 12px;
+}
+
+.af-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.af-label {
+  font-weight: 700;
+  font-size: 13px;
+}
+
+/* KPIs */
+.af-kpis {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.af-kpis-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.af-kpis-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.af-kpi {
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid #eee;
+  background: #fafafa;
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+.af-kpi:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+}
+
+.af-kpi-label {
+  font-size: 12px;
+  color: #666;
+}
+
+.af-kpi-value {
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.af-kpi-sub {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #666;
+}
+
+/* Responsivo */
+@media (max-width: 980px) {
+  .af-filters {
+    grid-template-columns: 1fr 1fr;
+  }
+  .af-kpis-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .af-kpis-3 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .af-filters {
+    grid-template-columns: 1fr;
+  }
+  .af-kpis-4,
+  .af-kpis-3 {
+    grid-template-columns: 1fr;
+  }
+}
