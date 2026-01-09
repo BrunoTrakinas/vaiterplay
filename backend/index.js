@@ -17630,51 +17630,53 @@ app.put("/gestor/flow-textos/:id", autenticarPainel, async (req, res) => {
     });
   }
 });
-// ==========================================================
-// CRON JOB: cancelar reservas pendentes com mais de 30 minutos
-// ==========================================================
-cron.schedule("* * * * *", async () => {
-  try {
-    const agora = new Date();
-    const limiteISO = new Date(
-      agora.getTime() - 30 * 60 * 1000 // 30 minutos atrás
-    ).toISOString();
+const IS_CRON_INSTANCE =
+  process.env.NODE_APP_INSTANCE === undefined ||
+  process.env.NODE_APP_INSTANCE === "0";
 
-    // Atualiza todas as reservas pendentes criadas antes do limite
-    const { data, error } = await supabase
-      .from("reservas")
-.update({
-  status: "canceled",
-  updated_at: new Date().toISOString(),
-})
-.in("status", ["pending", "pendente"]) // compat legado (se existir)
-.lt("created_at", limiteISO)
+if (IS_CRON_INSTANCE) {
+  // ==========================================================
+  // CRON JOB: cancelar reservas pendentes com mais de 30 minutos
+  // ==========================================================
+  cron.schedule("* * * * *", async () => {
+    try {
+      const agora = new Date();
+      const limiteISO = new Date(
+        agora.getTime() - 30 * 60 * 1000
+      ).toISOString();
 
-      .select("id");
+      const { data, error } = await supabase
+        .from("reservas")
+        .update({
+          status: "canceled",
+          updated_at: new Date().toISOString(),
+        })
+        .in("status", ["pending", "pendente"])
+        .lt("created_at", limiteISO)
+        .select("id");
 
-    if (error) {
-      console.error(
-        "[CRON RESERVAS] Erro ao cancelar reservas expiradas:",
-        error
-      );
-      return;
+      if (error) {
+        console.error("[CRON RESERVAS] Erro ao cancelar reservas expiradas:", error);
+        return;
+      }
+
+      if (data && data.length > 0) {
+        console.log(
+          `[CRON RESERVAS] Reservas expiradas canceladas: ${data.length}`,
+          data.map((r) => r.id)
+        );
+      }
+    } catch (err) {
+      console.error("[CRON RESERVAS] Erro inesperado no job de expiração:", err);
     }
+  });
+} else {
+  console.log(`[CRON RESERVAS] Desativado nesta instância (NODE_APP_INSTANCE=${process.env.NODE_APP_INSTANCE}).`);
+}
 
-    if (data && data.length > 0) {
-      console.log(
-        `[CRON RESERVAS] Reservas expiradas canceladas: ${data.length}`,
-        data.map((r) => r.id)
-      );
-    }
-  } catch (err) {
-    console.error(
-      "[CRON RESERVAS] Erro inesperado no job de expiração:",
-      err
-    );
-  }
-});
 // ROTA DE DIAGNÓSTICO DO CRON (Acesse pelo navegador: /teste-cron)
-app.get("/teste-cron", async (req, res) => {
+app.get("/teste-cron", authPainel, permitirTipos("ADMIN"), async (req, res) => {
+
   const agora = new Date();
   const limiteISO = new Date(agora.getTime() - 30 * 60 * 1000).toISOString();
 
@@ -17686,7 +17688,7 @@ app.get("/teste-cron", async (req, res) => {
   const { data: candidatos, error: errSelect } = await supabase
     .from("reservas")
     .select("id, created_at, status")
-    .eq("status", "pending")
+    .in("status", ["pending", "pendente"])
     .lt("created_at", limiteISO);
 
   if (errSelect) {
@@ -17708,7 +17710,7 @@ app.get("/teste-cron", async (req, res) => {
     return res.json({ 
       erro: "Erro ao atualizar (Provável RLS)", 
       detalhe: errUpdate,
-      candidatos_encontrados: candidates 
+      candidatos_encontrados: candidatos 
     });
   }
 
